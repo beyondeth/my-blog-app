@@ -4,7 +4,6 @@ import React from 'react';
 import Link from 'next/link';
 import { Post } from '@/types';
 import OptimizedImage from '@/components/ui/OptimizedImage';
-import { stripHtmlTags } from '@/utils/imageUtils';
 
 interface PostArticleProps {
   post: Post;
@@ -15,6 +14,26 @@ interface PostArticleProps {
   onDelete: (id: number) => void;
   isDeleting?: boolean;
 }
+
+// HTML 태그를 제거하고 순수 텍스트만 반환하는 로컬 함수
+const stripHtmlTags = (html: string): string => {
+  if (!html) return '';
+  
+  // HTML 태그 제거
+  const withoutTags = html.replace(/<[^>]*>/g, '');
+  
+  // HTML 엔티티 디코딩
+  const withoutEntities = withoutTags
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  
+  // 연속된 공백을 하나로 변환하고 앞뒤 공백 제거
+  return withoutEntities.replace(/\s+/g, ' ').trim();
+};
 
 const PostArticle = React.memo(function PostArticle({
   post,
