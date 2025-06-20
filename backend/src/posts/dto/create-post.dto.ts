@@ -17,14 +17,6 @@ export class CreatePostDto {
   content: string;
 
   @ApiPropertyOptional({
-    description: '게시글 요약',
-    example: '게시글의 간단한 요약...',
-  })
-  @IsOptional()
-  @IsString()
-  excerpt?: string;
-
-  @ApiPropertyOptional({
     description: '썸네일 이미지 URL',
     example: 'https://example.com/thumbnail.jpg',
   })

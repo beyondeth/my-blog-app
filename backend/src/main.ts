@@ -37,11 +37,23 @@ async function bootstrap() {
 
   // CORS configuration
   app.enableCors({
-    origin: [
-      configService.get('CORS_ORIGIN', 'http://localhost:3001'),
-      'http://localhost:3000',
-      'http://localhost:3001',
-    ],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        configService.get('CORS_ORIGIN', 'http://localhost:3001'),
+      ];
+      
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        logger.warn(`CORS blocked origin: ${origin}`);
+        return callback(new Error('Not allowed by CORS'), false);
+      }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
@@ -49,9 +61,19 @@ async function bootstrap() {
       'X-Requested-With',
       'Accept',
       'Origin',
+      'Cache-Control',
+      'Pragma',
     ],
-    credentials: true,
+    exposedHeaders: [
+      'Content-Type',
+      'Content-Length',
+      'ETag',
+      'Cache-Control',
+    ],
+    credentials: false, // 이미지 프록시에서는 credentials 불필요
     maxAge: 86400, // 24 hours
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
 
   // Global validation pipe

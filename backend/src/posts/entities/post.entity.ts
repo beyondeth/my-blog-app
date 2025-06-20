@@ -18,9 +18,6 @@ export class Post {
   content: string;
 
   @Column({ nullable: true })
-  excerpt: string;
-
-  @Column({ nullable: true })
   thumbnail: string;
 
   @Column({ default: false })
@@ -89,8 +86,8 @@ export class Post {
       this.slug = `${date}-${baseSlug}-${timestamp}`;
     }
 
-    // 콘텐츠에서 첫 번째 이미지를 썸네일로 설정
-    if (this.content && !this.thumbnail) {
+    // 콘텐츠가 있을 때마다 썸네일 재생성 (이미지가 추가/제거될 수 있으므로)
+    if (this.content) {
       this.extractThumbnailFromContent();
     }
   }
@@ -117,10 +114,13 @@ export class Post {
         }
         
         // 프록시 URL로 변환
-        imageUrl = `http://localhost:3000/api/v1/files/proxy/${s3Key}`;
+        imageUrl = `http://localhost:3001/api/v1/files/proxy/${s3Key}`;
       }
       
       this.thumbnail = imageUrl;
+    } else {
+      // 콘텐츠에 이미지가 없으면 썸네일 제거
+      this.thumbnail = null;
     }
   }
 
@@ -135,17 +135,5 @@ export class Post {
     }
     
     return matches;
-  }
-
-  // 요약 생성 (HTML 태그 제거 후 첫 150자)
-  generateExcerpt() {
-    if (!this.excerpt && this.content) {
-      const plainText = this.content
-        .replace(/<[^>]*>/g, '') // HTML 태그 제거
-        .replace(/\s+/g, ' ') // 공백 정리
-        .trim();
-      
-      this.excerpt = plainText.substring(0, 150) + (plainText.length > 150 ? '...' : '');
-    }
   }
 } 

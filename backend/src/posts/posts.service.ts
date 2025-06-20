@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, In } from 'typeorm';
 import { Post } from './entities/post.entity';
@@ -6,14 +6,18 @@ import { User } from '../users/entities/user.entity';
 import { File } from '../files/entities/file.entity';
 import { Role } from '../common/enums/role.enum';
 import { CreatePostDto } from './dto/create-post.dto';
+import { FilesService } from '../files/files.service';
 
 @Injectable()
 export class PostsService {
+  private readonly logger = new Logger(PostsService.name);
+
   constructor(
     @InjectRepository(Post)
     private postsRepository: Repository<Post>,
     @InjectRepository(File)
     private filesRepository: Repository<File>,
+    private filesService: FilesService,
   ) {}
 
   async create(createPostDto: CreatePostDto, user: User): Promise<Post> {
@@ -21,7 +25,6 @@ export class PostsService {
     const postData = {
       title: createPostDto.title,
       content: createPostDto.content,
-      excerpt: createPostDto.excerpt,
       thumbnail: createPostDto.thumbnail,
       tags: createPostDto.tags,
       category: createPostDto.category,
@@ -31,11 +34,6 @@ export class PostsService {
     };
 
     const post = this.postsRepository.create(postData);
-    
-    // 요약 자동 생성 (제공되지 않은 경우)
-    if (!post.excerpt) {
-      post.generateExcerpt();
-    }
 
     // slug 고유성 보장
     await this.ensureUniqueSlug(post);
@@ -47,7 +45,7 @@ export class PostsService {
       await this.attachFiles(savedPost.id, createPostDto.attachedFileIds, user.id);
     }
 
-    // 콘텐츠에서 파일 URL 추출하여 연결
+    // 콘텐츠에서 파일 URL 추출하여 연결 (UUID 기반)
     await this.linkFilesFromContent(savedPost);
 
     return this.findPostById(savedPost.id);
@@ -105,14 +103,19 @@ export class PostsService {
   }
 
   async findOne(id: number): Promise<any> {
+    this.logger.log(`Finding post by ID: ${id}`);
+    
     const post = await this.postsRepository.findOne({
       where: { id },
       relations: ['author', 'comments', 'comments.author', 'attachedFiles'],
     });
 
     if (!post) {
+      this.logger.warn(`Post not found for ID: ${id}`);
       throw new NotFoundException('Post not found');
     }
+
+    this.logger.log(`Post found: ${post.title} (${post.attachedFiles?.length || 0} attached files)`);
 
     // 조회수 증가
     await this.incrementViewCount(id);
@@ -125,12 +128,17 @@ export class PostsService {
       const d = String(date.getDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
     };
-    return {
+    
+    const result = {
       ...post,
       publishedAt: formatDate(post.publishedAt),
       createdAt: formatDate(post.createdAt),
       updatedAt: formatDate(post.updatedAt),
     };
+    
+    this.logger.log(`Returning post data with ${result.attachedFiles?.length || 0} attached files`);
+    
+    return result;
   }
 
   async findBySlug(slug: string): Promise<any> {
@@ -169,24 +177,39 @@ export class PostsService {
       throw new ForbiddenException('You can only update your own posts');
     }
 
-    Object.assign(post, updatePostDto);
-    
-    // 요약 재생성
-    if (updatePostDto.content) {
-      post.generateExcerpt();
+    // 콘텐츠가 변경되는 경우 사용되지 않는 이미지 파일 정리
+    if (updatePostDto.content && updatePostDto.content !== post.content) {
+      await this.cleanupUnusedImages(post.id, post.content, updatePostDto.content, user.id);
     }
 
+    Object.assign(post, updatePostDto);
+    
+    // slug 업데이트 (제목이 변경된 경우)
+    if (updatePostDto.title && updatePostDto.title !== post.title) {
+      await this.ensureUniqueSlug(post);
+    }
+
+    // 콘텐츠가 변경된 경우 썸네일 명시적으로 업데이트
+    if (updatePostDto.content) {
+      const thumbnailUrl = this.extractThumbnailFromContent(updatePostDto.content);
+      post.thumbnail = thumbnailUrl;
+      this.logger.log(`Post ${id} thumbnail updated to: ${thumbnailUrl || 'null'}`);
+    }
+
+    // 포스트 저장
     const savedPost = await this.postsRepository.save(post);
+    
+    this.logger.log(`Post ${id} updated, thumbnail: ${savedPost.thumbnail || 'none'}`);
 
     // 첨부 파일 업데이트
     if (updatePostDto.attachedFileIds !== undefined) {
-      await this.updateAttachedFiles(id, updatePostDto.attachedFileIds, user.id);
+      await this.updateAttachedFiles(savedPost.id, updatePostDto.attachedFileIds, user.id);
     }
 
-    // 콘텐츠에서 파일 URL 추출하여 연결
+    // 콘텐츠에서 파일 URL 추출하여 연결 (UUID 기반)
     await this.linkFilesFromContent(savedPost);
 
-    return savedPost;
+    return this.findPostById(savedPost.id);
   }
 
   async remove(id: number, user: User): Promise<void> {
@@ -199,18 +222,72 @@ export class PostsService {
     await this.postsRepository.remove(post);
   }
 
-  // 파일을 게시글에 첨부
+  // 관리자용 메소드들
+  async findAllForAdmin(page: number = 1, limit: number = 10, search?: string): Promise<{ posts: Post[]; total: number }> {
+    const query = this.postsRepository.createQueryBuilder('post')
+      .leftJoinAndSelect('post.author', 'author');
+
+    if (search) {
+      query.where('(post.title LIKE :search OR post.content LIKE :search OR post.tags LIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+
+    const [posts, total] = await query
+      .orderBy('post.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return { posts, total };
+  }
+
+  async publish(id: number): Promise<Post> {
+    const post = await this.findOne(id);
+    post.isPublished = true;
+    post.publishedAt = new Date();
+    return this.postsRepository.save(post);
+  }
+
+  async unpublish(id: number): Promise<Post> {
+    const post = await this.findOne(id);
+    post.isPublished = false;
+    post.publishedAt = null;
+    return this.postsRepository.save(post);
+  }
+
+  async getStats(): Promise<any> {
+    const totalPosts = await this.postsRepository.count();
+    const publishedPosts = await this.postsRepository.count({ where: { isPublished: true } });
+    const draftPosts = totalPosts - publishedPosts;
+
+    const topCategories = await this.postsRepository
+      .createQueryBuilder('post')
+      .select('post.category', 'category')
+      .addSelect('COUNT(*)', 'count')
+      .where('post.isPublished = :isPublished', { isPublished: true })
+      .andWhere('post.category IS NOT NULL')
+      .groupBy('post.category')
+      .orderBy('count', 'DESC')
+      .limit(5)
+      .getRawMany();
+
+    return {
+      totalPosts,
+      publishedPosts,
+      draftPosts,
+      topCategories,
+    };
+  }
+
   private async attachFiles(postId: number, fileIds: number[], userId: number): Promise<void> {
     const post = await this.postsRepository.findOne({
       where: { id: postId },
       relations: ['attachedFiles'],
     });
 
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+    if (!post) return;
 
-    // 사용자가 소유한 파일들만 가져오기
     const files = await this.filesRepository.find({
       where: { 
         id: In(fileIds),
@@ -218,22 +295,19 @@ export class PostsService {
       },
     });
 
-    post.attachedFiles = [...(post.attachedFiles || []), ...files];
+    post.attachedFiles = files;
     await this.postsRepository.save(post);
   }
 
-  // 첨부 파일 업데이트
   private async updateAttachedFiles(postId: number, fileIds: number[], userId: number): Promise<void> {
     const post = await this.postsRepository.findOne({
       where: { id: postId },
       relations: ['attachedFiles'],
     });
 
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+    if (!post) return;
 
-    // 기존 첨부 파일 제거
+    // 기존 첨부 파일들 제거
     post.attachedFiles = [];
 
     if (fileIds && fileIds.length > 0) {
@@ -250,34 +324,107 @@ export class PostsService {
     await this.postsRepository.save(post);
   }
 
-  // 콘텐츠에서 파일 URL을 찾아서 연결
+  // 콘텐츠에서 파일 URL을 찾아서 연결 (UUID 기반 개선)
   private async linkFilesFromContent(post: Post): Promise<void> {
-    const imageUrls = post.getImageUrlsFromContent();
-    
-    if (imageUrls.length === 0) return;
+    try {
+      const imageUrls = post.getImageUrlsFromContent();
+      
+      if (imageUrls.length === 0) {
+        this.logger.log(`No image URLs found in post ${post.id} content`);
+        return;
+      }
 
-    // URL로 파일 찾기
-    const files = await this.filesRepository.find({
-      where: { 
-        fileUrl: In(imageUrls),
-        userId: post.author.id,
-      },
-    });
+      this.logger.log(`Found ${imageUrls.length} image URLs in post ${post.id}:`, imageUrls);
 
-    if (files.length > 0) {
-      const postWithFiles = await this.postsRepository.findOne({
-        where: { id: post.id },
-        relations: ['attachedFiles'],
+      // UUID 기반 S3 키 추출
+      const s3Keys = imageUrls
+        .map(url => this.extractS3KeyFromUrl(url))
+        .filter(Boolean) as string[];
+      
+      if (s3Keys.length === 0) {
+        this.logger.warn(`No valid S3 keys extracted from URLs in post ${post.id}`);
+        return;
+      }
+
+      this.logger.log(`Extracted ${s3Keys.length} S3 keys:`, s3Keys);
+
+      // S3 키로 파일 찾기 (UUID 기반)
+      const files = await this.filesRepository.find({
+        where: { 
+          fileKey: In(s3Keys),
+          userId: post.author.id 
+        },
       });
 
-      // 기존 첨부 파일과 중복되지 않게 추가
-      const existingFileIds = postWithFiles.attachedFiles?.map(f => f.id) || [];
-      const newFiles = files.filter(f => !existingFileIds.includes(f.id));
+      this.logger.log(`Found ${files.length} matching files in database`);
 
-      if (newFiles.length > 0) {
-        postWithFiles.attachedFiles = [...(postWithFiles.attachedFiles || []), ...newFiles];
-        await this.postsRepository.save(postWithFiles);
+      if (files.length > 0) {
+        const postWithFiles = await this.postsRepository.findOne({
+          where: { id: post.id },
+          relations: ['attachedFiles'],
+        });
+
+        // 기존 첨부 파일과 중복되지 않게 추가
+        const existingFileIds = postWithFiles.attachedFiles?.map(f => f.id) || [];
+        const newFiles = files.filter(f => !existingFileIds.includes(f.id));
+
+        if (newFiles.length > 0) {
+          postWithFiles.attachedFiles = [...(postWithFiles.attachedFiles || []), ...newFiles];
+          await this.postsRepository.save(postWithFiles);
+          this.logger.log(`Linked ${newFiles.length} new files to post ${post.id}`);
+        } else {
+          this.logger.log(`No new files to link for post ${post.id}`);
+        }
       }
+    } catch (error) {
+      this.logger.error(`Failed to link files from content for post ${post.id}:`, error.message);
+    }
+  }
+
+  // UUID 기반 S3 키 추출 개선
+  private extractS3KeyFromUrl(url: string): string | null {
+    if (!url) return null;
+    
+    try {
+      // 이미 S3 키인 경우 (uploads/로 시작)
+      if (url.startsWith('uploads/')) {
+        return url;
+      }
+      
+      // 프록시 URL인 경우 (/api/v1/files/proxy/ 포함)
+      if (url.includes('/api/v1/files/proxy/')) {
+        const proxyMatch = url.match(/\/api\/v1\/files\/proxy\/(.+)/);
+        if (proxyMatch) {
+          const s3Key = proxyMatch[1].split('?')[0]; // 쿼리 파라미터 제거
+          this.logger.log(`Extracted S3 key from proxy URL: ${url} -> ${s3Key}`);
+          return s3Key;
+        }
+      }
+      
+      // S3 직접 URL인 경우 (UUID 파일명 포함)
+      const s3Pattern = /https:\/\/[^\/]+\.s3\.[^\/]+\.amazonaws\.com\/(.+)/;
+      const match = url.match(s3Pattern);
+      if (match) {
+        const s3Key = match[1].split('?')[0]; // 쿼리 파라미터 제거 (presigned URL의 경우)
+        this.logger.log(`Extracted S3 key from S3 URL: ${url} -> ${s3Key}`);
+        return s3Key;
+      }
+      
+      // localhost 프록시 URL 처리 (개발 환경)
+      if (url.includes('localhost:3000/api/v1/files/proxy/')) {
+        const proxyMatch = url.match(/localhost:3000\/api\/v1\/files\/proxy\/(.+)/);
+        if (proxyMatch) {
+          const s3Key = proxyMatch[1].split('?')[0];
+          this.logger.log(`Extracted S3 key from localhost proxy URL: ${url} -> ${s3Key}`);
+          return s3Key;
+        }
+      }
+      
+      this.logger.warn(`Could not extract S3 key from URL: ${url}`);
+      return null;
+    } catch (error) {
+      this.logger.error('Error extracting S3 key from URL:', error);
+      return null;
     }
   }
 
@@ -377,5 +524,113 @@ export class PostsService {
       post.slug = finalSlug;
       await this.postsRepository.save(post);
     }
+  }
+
+  // 기존 게시글들의 파일 연결 재처리 (UUID 기반)
+  async relinkContentFiles(): Promise<void> {
+    const posts = await this.postsRepository.find({
+      relations: ['author'],
+    });
+
+    this.logger.log(`Starting to relink content files for ${posts.length} posts`);
+
+    for (const post of posts) {
+      try {
+        await this.linkFilesFromContent(post);
+        this.logger.log(`✅ Relinked files for post: ${post.title}`);
+      } catch (error) {
+        this.logger.error(`❌ Failed to relink files for post ${post.id}:`, error.message);
+      }
+    }
+
+    this.logger.log('Finished relinking content files');
+  }
+
+  // 사용되지 않는 이미지 파일 정리 (S3 + DB)
+  private async cleanupUnusedImages(postId: number, oldContent: string, newContent: string, userId: number): Promise<void> {
+    try {
+      // 기존 콘텐츠와 새 콘텐츠에서 이미지 URL 추출
+      const oldImageUrls = this.extractImageUrlsFromContent(oldContent);
+      const newImageUrls = this.extractImageUrlsFromContent(newContent);
+
+      // 제거된 이미지 URL 찾기
+      const removedImageUrls = oldImageUrls.filter(url => !newImageUrls.includes(url));
+
+      if (removedImageUrls.length === 0) {
+        this.logger.log(`No images removed from post ${postId}`);
+        return;
+      }
+
+      this.logger.log(`Found ${removedImageUrls.length} removed images from post ${postId}:`, removedImageUrls);
+
+      // S3 키 추출
+      const s3Keys = removedImageUrls
+        .map(url => this.extractS3KeyFromUrl(url))
+        .filter(Boolean) as string[];
+
+      if (s3Keys.length === 0) {
+        this.logger.warn(`No valid S3 keys extracted from removed images in post ${postId}`);
+        return;
+      }
+
+      // DB에서 해당 파일들 찾기
+      const filesToDelete = await this.filesRepository.find({
+        where: {
+          fileKey: In(s3Keys),
+          userId: userId,
+        },
+      });
+
+      this.logger.log(`Found ${filesToDelete.length} files to delete from DB`);
+
+      // 각 파일을 S3와 DB에서 삭제
+      for (const file of filesToDelete) {
+        try {
+          // S3에서 파일 삭제
+          await this.filesService.deleteFile(file.id, userId);
+          this.logger.log(`✅ Deleted file: ${file.fileKey} (ID: ${file.id})`);
+        } catch (error) {
+          this.logger.error(`❌ Failed to delete file ${file.fileKey}:`, error.message);
+        }
+      }
+
+      this.logger.log(`🧹 Cleanup completed for post ${postId}: ${filesToDelete.length} files deleted`);
+    } catch (error) {
+      this.logger.error(`Failed to cleanup unused images for post ${postId}:`, error.message);
+    }
+  }
+
+  // 콘텐츠에서 이미지 URL 추출 (img 태그의 src 속성)
+  private extractImageUrlsFromContent(content: string): string[] {
+    if (!content) return [];
+
+    const imgRegex = /<img[^>]+src="([^">]+)"/gi;
+    const urls: string[] = [];
+    let match;
+
+    while ((match = imgRegex.exec(content)) !== null) {
+      if (match[1]) {
+        // 쿼리 파라미터 제거
+        const cleanUrl = match[1].split('?')[0];
+        urls.push(cleanUrl);
+      }
+    }
+
+    return urls;
+  }
+
+  // 콘텐츠에서 썸네일 URL 추출
+  private extractThumbnailFromContent(content: string): string | null {
+    if (!content) return null;
+
+    // HTML에서 첫 번째 img 태그의 src 추출
+    const imgRegex = /<img[^>]+src="([^">]+)"/i;
+    const match = content.match(imgRegex);
+    
+    if (match && match[1]) {
+      return match[1];
+    }
+
+    return null;
   }
 } 

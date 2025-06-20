@@ -4,7 +4,9 @@ import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { KakaoAuthGuard } from './guards/kakao-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from '../common/decorators/public.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -65,5 +67,14 @@ export class AuthController {
     // 프론트엔드로 리다이렉트
     const token = req.user.access_token;
     res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: '로그아웃' })
+  @ApiResponse({ status: 200, description: '로그아웃 성공' })
+  async logout(@CurrentUser() user: any) {
+    await this.authService.logout(user.id);
+    return { message: '로그아웃되었습니다.' };
   }
 } 

@@ -1,23 +1,19 @@
 "use client";
 
-import React, { useCallback, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import RichTextEditor, { BaseKit } from 'reactjs-tiptap-editor';
-import { Image } from 'reactjs-tiptap-editor/image';
-import { Bold } from 'reactjs-tiptap-editor/bold';
-import { Italic } from 'reactjs-tiptap-editor/italic';
-import { Strike } from 'reactjs-tiptap-editor/strike';
-import { Heading } from 'reactjs-tiptap-editor/heading';
-import { BulletList } from 'reactjs-tiptap-editor/bulletlist';
-import { OrderedList } from 'reactjs-tiptap-editor/orderedlist';
-import { Blockquote } from 'reactjs-tiptap-editor/blockquote';
-import { CodeBlock } from 'reactjs-tiptap-editor/codeblock';
-import { Link } from 'reactjs-tiptap-editor/link';
-import 'reactjs-tiptap-editor/style.css';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
+import TextStyle from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import Placeholder from '@tiptap/extension-placeholder';
 
-// 기존 API 클라이언트 재사용
-import { apiClient } from '../../lib/api';
-import { getProxyImageUrl } from '../../utils/imageUtils';
+// 리팩토링된 훅들 사용
+import { useUploadFile, validateImageFile } from '@/hooks/useFiles';
+import { getProxyImageUrl, normalizeImageUrl, debugLog } from '@/utils/imageUtils';
+import { getErrorMessage } from '@/utils/queryHelpers';
+import EditorToolbar from './EditorToolbar';
 
 interface RichTextEditorProps {
   content: string;
@@ -27,11 +23,6 @@ interface RichTextEditorProps {
   className?: string;
 }
 
-interface UploadResponse {
-  id: number;
-  fileUrl: string;
-}
-
 export default function BlogRichTextEditor({ 
   content, 
   onChange, 
@@ -39,162 +30,235 @@ export default function BlogRichTextEditor({
   placeholder = "내용을 입력하세요...",
   className = ""
 }: RichTextEditorProps) {
-  const queryClient = useQueryClient();
-  const [uploadedFiles, setUploadedFiles] = React.useState<string[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
-  // 파일 업로드 뮤테이션
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File): Promise<UploadResponse> => {
+  // 리팩토링된 파일 업로드 훅 사용
+  const uploadMutation = useUploadFile();
+
+
+
+  // 파일 업로드 핸들러
+  const handleImageUpload = useCallback(async (file: File): Promise<string> => {
+    try {
+      setIsUploading(true);
+      
       // 파일 검증
-      if (file.size > 10 * 1024 * 1024) {
-        throw new Error('파일 크기는 10MB를 초과할 수 없습니다.');
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        throw new Error(validation.error);
       }
 
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedTypes.includes(file.type)) {
-        throw new Error('지원되지 않는 파일 형식입니다. (JPEG, PNG, GIF, WebP만 허용)');
-      }
-
-      return await apiClient.uploadFile(file, 'image');
-    },
-    retry: 1,
-    retryDelay: 1000,
-    onSuccess: (result) => {
+      const result = await uploadMutation.mutateAsync({ 
+        file, 
+        fileType: 'image' 
+      });
+      
       // 성공 시 파일 ID 추가
       const fileId = result.id.toString();
-      setUploadedFiles(prev => [...prev, fileId]);
-      onFilesChange?.([...uploadedFiles, fileId]);
+      setUploadedFiles(prev => {
+        const newFiles = [...prev, fileId];
+        onFilesChange?.(newFiles);
+        return newFiles;
+      });
       
-      // 캐시 무효화
-      queryClient.invalidateQueries({ queryKey: ['files'] });
-    },
-    onError: (error) => {
+      // 프록시 URL 생성
+      const proxyUrl = result.fileKey 
+        ? getProxyImageUrl(result.fileKey)
+        : getProxyImageUrl(result.fileUrl);
+      
+      debugLog('Image upload completed', {
+        originalUrl: result.fileUrl,
+        fileKey: result.fileKey,
+        proxyUrl: proxyUrl,
+      });
+      
+      return proxyUrl || result.fileUrl;
+    } catch (error) {
+      debugLog('Image upload failed', error);
+      
       // 사용자 친화적인 에러 처리
-      let errorMessage = '파일 업로드에 실패했습니다.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-          errorMessage = '로그인이 필요합니다. 다시 로그인해주세요.';
-        } else if (error.message.includes('413') || error.message.includes('too large')) {
-          errorMessage = '파일 크기가 너무 큽니다. 10MB 이하의 파일을 선택해주세요.';
-        } else if (error.message.includes('415') || error.message.includes('format')) {
-          errorMessage = '지원되지 않는 파일 형식입니다.';
-        } else if (error.message.includes('403')) {
-          errorMessage = 'S3 권한 설정에 문제가 있습니다. 관리자에게 문의하세요.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-      }
-      
+      const errorMessage = getErrorMessage(error);
       if (typeof window !== 'undefined') {
         alert(errorMessage);
       }
-    },
-  });
-
-  // 개선된 업로드 함수
-  const handleFileUpload = useCallback(async (file: File): Promise<string> => {
-    try {
-      const result = await uploadMutation.mutateAsync(file);
-      const proxyUrl = getProxyImageUrl(result.fileUrl);
-      return proxyUrl || result.fileUrl;
-    } catch (error) {
-      throw error; // 뮤테이션에서 이미 에러 처리됨
+      throw error;
+    } finally {
+      setIsUploading(false);
     }
-  }, [uploadMutation]);
+  }, [uploadMutation, onFilesChange]);
 
-  // 에디터 확장 기능 설정
-  const extensions = useMemo(() => [
-    BaseKit.configure({
-      placeholder: {
+  // TipTap 에디터 설정
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      // 이미지 확장 - TipTap 공식 문서 권장 설정
+      Image.configure({
+        inline: true, // 텍스트와 함께 인라인으로 표시
+        allowBase64: true, // base64 이미지 허용
+        HTMLAttributes: {
+          class: 'editor-image',
+          style: 'max-width: 100%; height: auto; display: inline-block; margin: 4px 0; border-radius: 4px;',
+          loading: 'lazy',
+        },
+      }),
+      // 링크 확장
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: 'editor-link',
+        },
+      }),
+      // 텍스트 스타일과 색상
+      TextStyle,
+      Color.configure({
+        types: [TextStyle.name],
+      }),
+      // 플레이스홀더
+      Placeholder.configure({
         placeholder: placeholder,
+      }),
+    ],
+    content: '',
+    // TipTap 공식 문서 권장: parseOptions 설정
+    parseOptions: {
+      preserveWhitespace: 'full',
+    },
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[300px] p-4',
       },
-    }),
-    
-    // 기본 텍스트 스타일링
-    Bold,
-    Italic,
-    Strike,
-    
-    // 제목
-    Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
-    
-    // 리스트
-    BulletList,
-    OrderedList,
-    
-    // 기타
-    Blockquote,
-    CodeBlock,
-    Link,
-    
-    // 이미지 업로드 설정
-    Image.configure({
-      upload: handleFileUpload,
-      acceptMimes: ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
-      maxSize: 10 * 1024 * 1024, // 10MB
-      resourceImage: 'upload', // 업로드만 허용
-    }),
-  ], [handleFileUpload, placeholder]);
+      handleDrop: (view, event, slice, moved) => {
+        const files = Array.from(event.dataTransfer?.files || []);
+        const imageFiles = files.filter(file => file.type.startsWith('image/'));
+        
+        if (imageFiles.length > 0) {
+          event.preventDefault();
+          
+          imageFiles.forEach(async (file) => {
+            try {
+              const imageUrl = await handleImageUpload(file);
+              
+              // TipTap 공식 문서 권장: setImage 명령어 사용
+              editor?.chain().focus().setImage({ 
+                src: imageUrl, 
+                alt: file.name,
+                title: file.name
+              }).run();
+            } catch (error) {
+              console.error('Failed to upload dropped image:', error);
+            }
+          });
+          
+          return true;
+        }
+        
+        return false;
+      },
+      handlePaste: (view, event, slice) => {
+        const files = Array.from(event.clipboardData?.files || []);
+        const imageFiles = files.filter(file => file.type.startsWith('image/'));
+        
+        if (imageFiles.length > 0) {
+          event.preventDefault();
+          
+          imageFiles.forEach(async (file) => {
+            try {
+              const imageUrl = await handleImageUpload(file);
+              
+              // TipTap 공식 문서 권장: setImage 명령어 사용
+              editor?.chain().focus().setImage({ 
+                src: imageUrl, 
+                alt: file.name,
+                title: file.name
+              }).run();
+    } catch (error) {
+              console.error('Failed to upload pasted image:', error);
+            }
+          });
+          
+          return true;
+        }
+        
+        return false;
+      },
+    },
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML();
+      onChange(html);
+    },
+  }, [onChange]);
+
+  // 에디터 초기 콘텐츠 설정
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      // 에디터가 포커스되어 있지 않을 때만 내용 업데이트
+      if (!editor.isFocused) {
+        editor.commands.setContent(content);
+      }
+    }
+  }, [editor, content]);
+
+  // 이미지 업로드 트리거 (툴바에서 사용)
+  const triggerImageUpload = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        try {
+          const imageUrl = await handleImageUpload(file);
+          editor?.chain().focus().setImage({ 
+            src: imageUrl, 
+            alt: file.name,
+            title: file.name
+          }).run();
+        } catch (error) {
+          console.error('Failed to upload image:', error);
+        }
+      }
+    };
+    input.click();
+  }, [editor, handleImageUpload]);
+
+  if (!editor) {
+    return (
+      <div className="border border-gray-300 rounded-md p-4 min-h-[300px] flex items-center justify-center">
+        <div className="text-gray-500">에디터를 로딩 중...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-800 ${className}`}>
-      <RichTextEditor
-        output="html"
-        content={content}
-        onChangeContent={onChange}
-        extensions={extensions}
-        dark={false}
+    <div className={`border border-gray-300 rounded-md ${className}`}>
+      <EditorToolbar 
+        editor={editor} 
+        onImageUpload={triggerImageUpload}
+        isUploading={isUploading}
       />
-      
-      {/* 업로드 상태 표시 */}
-      {uploadMutation.isPending && (
-        <div className="p-2 text-sm text-blue-600 bg-blue-50 border-t">
-          파일 업로드 중...
+      <EditorContent editor={editor} />
+      {isUploading && (
+        <div className="p-2 bg-blue-50 border-t border-gray-300">
+          <div className="flex items-center text-sm text-blue-600">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+            이미지를 업로드하는 중...
         </div>
-      )}
-      
-      {uploadMutation.isError && (
-        <div className="p-2 text-sm text-red-600 bg-red-50 border-t flex justify-between items-center">
-          <span>업로드 실패</span>
-          <button 
-            onClick={() => uploadMutation.reset()}
-            className="text-xs underline hover:no-underline"
-          >
-            닫기
-          </button>
         </div>
       )}
     </div>
   );
 }
 
-// 업로드된 파일들 정리 유틸리티 함수 (DOM 조작 제거)
+// 컨텐츠에서 파일 ID 추출 함수 (기존 유지)
 export const extractFileIdsFromContent = (htmlContent: string): string[] => {
-  if (typeof window === 'undefined') return [];
-  
-  try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, 'text/html');
-    
     const fileIds: string[] = [];
-    
-    // 이미지에서 파일 ID 추출
-    const images = doc.querySelectorAll('img[data-file-id]');
-    images.forEach(img => {
-      const fileId = img.getAttribute('data-file-id');
-      if (fileId) fileIds.push(fileId);
-    });
-    
-    // 첨부파일에서 파일 ID 추출
-    const attachments = doc.querySelectorAll('[data-file-id]');
-    attachments.forEach(attachment => {
-      const fileId = attachment.getAttribute('data-file-id');
-      if (fileId) fileIds.push(fileId);
-    });
-    
-    return [...new Set(fileIds)]; // 중복 제거
-  } catch (error) {
-    return []; // 에러 시 빈 배열 반환
+  const imgRegex = /<img[^>]+src="[^"]*\/files\/([^"/]+)"/g;
+  let match;
+  
+  while ((match = imgRegex.exec(htmlContent)) !== null) {
+    fileIds.push(match[1]);
   }
+    
+  return fileIds;
 }; 

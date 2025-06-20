@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Request } f
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CommentsService } from './comments.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('comments')
 @Controller('comments')
@@ -17,18 +18,21 @@ export class CommentsController {
   }
 
   @Get('post/:postId')
+  @Public()
   @ApiOperation({ summary: '게시글별 댓글 조회' })
   findAllByPost(@Param('postId') postId: string) {
     return this.commentsService.findAllByPost(+postId);
   }
 
   @Get('all')
+  @Public()
   @ApiOperation({ summary: '모든 댓글 조회 (방명록용)' })
   findAll() {
     return this.commentsService.findAllComments();
   }
 
   @Get(':id')
+  @Public()
   @ApiOperation({ summary: '댓글 상세 조회' })
   findOne(@Param('id') id: string) {
     return this.commentsService.findOne(+id);

@@ -1,10 +1,18 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { File } from './entities/file.entity';
 import { S3Service, PresignedUrlResponse } from './services/s3.service';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { UploadCompleteDto } from './dto/upload-complete.dto';
+import { 
+  generateUuidFileName, 
+  generateS3Key, 
+  isImageMimeType, 
+  validateMimeType,
+  formatFileSize 
+} from '../common/utils/file.utils';
 
 @Injectable()
 export class FilesService {
@@ -14,21 +22,42 @@ export class FilesService {
     @InjectRepository(File)
     private fileRepository: Repository<File>,
     private s3Service: S3Service,
+    private configService: ConfigService,
   ) {}
 
   /**
-   * 파일 업로드용 Presigned URL 생성
+   * 파일 업로드용 Presigned URL 생성 (UUID 기반)
    */
   async createUploadUrl(
     userId: number, 
     createUploadUrlDto: CreateUploadUrlDto
-  ): Promise<PresignedUrlResponse & { tempId: string }> {
+  ): Promise<PresignedUrlResponse & { tempId: string; uuidFileName: string; s3Key: string }> {
     const { fileName, mimeType, fileSize, fileType } = createUploadUrlDto;
 
     try {
-      // S3 Presigned URL 생성
+      // 파일 타입 검증
+      const allowedTypes = this.configService.get<string>('SUPPORTED_IMAGE_TYPES', 
+        'image/jpeg,image/jpg,image/png,image/gif,image/webp').split(',');
+      
+      if (isImageMimeType(mimeType) && !validateMimeType(mimeType, allowedTypes)) {
+        throw new Error(`Unsupported image type: ${mimeType}`);
+      }
+
+      // 파일 크기 검증
+      const maxFileSize = this.configService.get<number>('MAX_FILE_SIZE', 10485760);
+      if (fileSize > maxFileSize) {
+        throw new Error(`File size exceeds limit: ${formatFileSize(fileSize)} > ${formatFileSize(maxFileSize)}`);
+      }
+
+      // UUID 기반 파일명 생성
+      const uuidFileName = generateUuidFileName(fileName, mimeType, fileType);
+      const s3Key = generateS3Key(uuidFileName, fileType);
+
+      this.logger.log(`Generated UUID filename: ${uuidFileName}, S3 Key: ${s3Key}`);
+
+      // S3 Presigned URL 생성 (UUID 파일명 사용)
       const presignedData = await this.s3Service.generatePresignedUploadUrl(
-        fileName,
+        s3Key,
         mimeType,
         fileSize,
         fileType
@@ -37,11 +66,13 @@ export class FilesService {
       // 임시 ID 생성 (업로드 완료 시 연결용)
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      this.logger.log(`Upload URL created for user ${userId}, file: ${fileName}`);
+      this.logger.log(`Upload URL created for user ${userId}, original: ${fileName}, uuid: ${uuidFileName}`);
 
       return {
         ...presignedData,
         tempId,
+        uuidFileName,
+        s3Key,
       };
     } catch (error) {
       this.logger.error(`Failed to create upload URL: ${error.message}`, error.stack);
@@ -50,7 +81,7 @@ export class FilesService {
   }
 
   /**
-   * 파일 업로드 완료 처리
+   * 파일 업로드 완료 처리 (UUID 기반)
    */
   async uploadComplete(
     userId: number,
@@ -69,17 +100,22 @@ export class FilesService {
         fileType
       });
 
+      // S3 키 검증 (UUID 형식인지 확인)
+      if (!fileKey || !fileKey.includes('uploads/')) {
+        throw new Error('Invalid S3 key format');
+      }
+
       // 이미지 파일인 경우 Presigned URL 생성 (1시간 유효)
       const accessUrl = await this.s3Service.generatePresignedDownloadUrl(fileKey);
       
-      this.logger.log(`Generated access URL: ${accessUrl}`);
+      this.logger.log(`Generated access URL for S3 key: ${fileKey}`);
 
-      // 파일 정보 DB에 저장 - fileUrl에는 S3 키를 저장 (Presigned URL이 아닌)
+      // 파일 정보 DB에 저장 - fileUrl에는 S3 키를 저장
       const file = this.fileRepository.create({
-        originalName: fileName,
-        fileName: fileKey.split('/').pop(), // 파일명만 추출
-        fileKey,
-        fileUrl: fileKey, // ✅ S3 키를 저장 (Presigned URL 대신)
+        originalName: fileName, // 원본 파일명 유지
+        fileName: fileKey.split('/').pop(), // UUID 파일명
+        fileKey, // S3 키 (전체 경로)
+        fileUrl: fileKey, // S3 키를 저장 (일관성 유지)
         fileSize,
         mimeType,
         fileType: fileType || 'general',
@@ -88,7 +124,7 @@ export class FilesService {
 
       const savedFile = await this.fileRepository.save(file);
 
-      this.logger.log(`File upload completed for user ${userId}, fileId: ${savedFile.id}`);
+      this.logger.log(`File upload completed for user ${userId}, fileId: ${savedFile.id}, S3 key: ${fileKey}`);
       
       return {
         ...savedFile,
@@ -123,8 +159,23 @@ export class FilesService {
 
     const [files, total] = await queryBuilder.getManyAndCount();
 
+    // 각 파일에 대해 접근 URL 생성
+    const filesWithUrls = await Promise.all(
+      files.map(async (file) => {
+        try {
+          const accessUrl = isImageMimeType(file.mimeType) 
+            ? await this.s3Service.generatePresignedDownloadUrl(file.fileKey)
+            : null;
+          return { ...file, accessUrl };
+        } catch (error) {
+          this.logger.warn(`Failed to generate access URL for file ${file.id}: ${error.message}`);
+          return { ...file, accessUrl: null };
+        }
+      })
+    );
+
     return {
-      files,
+      files: filesWithUrls,
       total,
       page,
       limit,
@@ -154,6 +205,15 @@ export class FilesService {
   }
 
   /**
+   * S3 키로 파일 조회 (UUID 기반)
+   */
+  async getFileByS3Key(s3Key: string): Promise<File | null> {
+    return await this.fileRepository.findOne({
+      where: { fileKey: s3Key },
+    });
+  }
+
+  /**
    * 파일 삭제
    */
   async deleteFile(fileId: number, userId: number): Promise<void> {
@@ -180,9 +240,9 @@ export class FilesService {
     const file = await this.getFileById(fileId, userId);
     
     try {
-      // 공개 파일이면 직접 URL 반환, 아니면 Presigned URL 생성
-      if (file.fileType === 'image') {
-        return this.s3Service.getPublicFileUrl(file.fileKey);
+      // 이미지 파일이면 Presigned URL 생성
+      if (isImageMimeType(file.mimeType)) {
+        return await this.s3Service.generatePresignedDownloadUrl(file.fileKey);
       } else {
         return await this.s3Service.generatePresignedDownloadUrl(file.fileKey);
       }
@@ -198,11 +258,9 @@ export class FilesService {
   async getFileStats(userId: number) {
     const stats = await this.fileRepository
       .createQueryBuilder('file')
-      .select([
-        'file.fileType as fileType',
-        'COUNT(*) as count',
-        'SUM(file.fileSize) as totalSize'
-      ])
+      .select('file.fileType', 'fileType')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('SUM(file.fileSize)', 'totalSize')
       .where('file.userId = :userId', { userId })
       .groupBy('file.fileType')
       .getRawMany();
@@ -210,13 +268,13 @@ export class FilesService {
     const totalFiles = await this.fileRepository.count({ where: { userId } });
     const totalSize = await this.fileRepository
       .createQueryBuilder('file')
-      .select('SUM(file.fileSize)', 'totalSize')
+      .select('SUM(file.fileSize)', 'total')
       .where('file.userId = :userId', { userId })
       .getRawOne();
 
     return {
       totalFiles,
-      totalSize: parseInt(totalSize.totalSize || '0'),
+      totalSize: parseInt(totalSize?.total || '0'),
       byType: stats.map(stat => ({
         fileType: stat.fileType,
         count: parseInt(stat.count),
@@ -225,16 +283,21 @@ export class FilesService {
     };
   }
 
-  async findOne(id: number, userId: number): Promise<File> {
-    const file = await this.fileRepository.findOne({
-      where: { id, userId },
-    });
-
-    if (!file) {
-      throw new NotFoundException('File not found');
+  /**
+   * 파일 존재 여부 확인 (S3 키 기반)
+   */
+  async checkFileExists(s3Key: string): Promise<boolean> {
+    try {
+      return await this.s3Service.checkFileExists(s3Key);
+    } catch (error) {
+      this.logger.error(`Failed to check file existence: ${error.message}`, error.stack);
+      return false;
     }
+  }
 
-    return file;
+  // 기존 메서드들 유지 (하위 호환성)
+  async findOne(id: number, userId: number): Promise<File> {
+    return this.getFileById(id, userId);
   }
 
   async findAll(limit: number = 20): Promise<File[]> {

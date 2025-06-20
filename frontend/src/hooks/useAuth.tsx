@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkAuth();
-  }, [checkAuth]);
+  }, [mounted]); // checkAuth 의존성 제거하여 무한 루프 방지
 
   const login = useCallback(async (credentials: LoginForm) => {
     try {
@@ -130,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [mounted, clearError, handleError]);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (redirectTo?: string) => {
     try {
       await apiClient.logout();
     } catch (error) {
@@ -139,7 +139,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       if (mounted) {
         localStorage.removeItem('user');
-        window.location.href = '/';
+        if (redirectTo) {
+          window.location.href = redirectTo;
+        }
       }
     }
   }, [mounted]);

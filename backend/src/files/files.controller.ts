@@ -11,6 +11,7 @@ import {
   HttpStatus,
   HttpCode,
   Res,
+  Req,
   Options,
 } from '@nestjs/common';
 import {
@@ -27,7 +28,7 @@ import { UploadCompleteDto } from './dto/upload-complete.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { Logger } from '@nestjs/common';
 
 @ApiTags('Files')
@@ -130,22 +131,23 @@ export class FilesController {
     return { downloadUrl };
   }
 
-  @Options('proxy/:fileKey(*)')
+  @Options('proxy/*')
   @Public()
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.NO_CONTENT)
   async proxyImageOptions(@Res() res: Response) {
+    // OPTIONS 요청에 명시적 CORS 헤더 설정
     res.set({
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
     });
     return res.send();
   }
 
-  @Get('proxy/:fileKey(*)')
+  @Get('proxy/*')
   @Public()
-  @ApiOperation({ summary: '이미지 프록시 - S3 파일로 리다이렉트' })
+  @ApiOperation({ summary: '이미지 프록시 - S3 파일로 리다이렉트 (UUID 기반)' })
   @ApiResponse({ 
     status: 302, 
     description: 'S3 파일로 리다이렉트',
@@ -154,59 +156,53 @@ export class FilesController {
     status: 404, 
     description: '파일을 찾을 수 없음',
   })
-  async proxyImage(@Param('fileKey') fileKey: string, @Res() res: Response) {
+  async proxyImage(@Param('0') fileKey: string, @Res() res: Response, @Req() req: Request) {
     try {
-      // URL 디코딩하여 한글 파일명 처리 (이중 디코딩 처리)
-      let decodedFileKey = fileKey;
+      // UUID 기반 S3 키 처리
+      let processedFileKey = fileKey;
       
-      // 첫 번째 디코딩
+      this.logger.log(`🔍 [PROXY] Raw fileKey from URL: ${fileKey}`);
+      
+      // URL 디코딩 (UUID는 일반적으로 ASCII이므로 간단한 처리)
       try {
-        decodedFileKey = decodeURIComponent(fileKey);
+        processedFileKey = decodeURIComponent(fileKey);
+        this.logger.log(`🔄 [PROXY] After decode: ${processedFileKey}`);
       } catch (e) {
-        this.logger.warn(`First decode failed for: ${fileKey}`);
+        this.logger.warn(`❌ [PROXY] Decode failed for: ${fileKey}`, e.message);
+        processedFileKey = fileKey; // 디코딩 실패 시 원본 사용
       }
       
-      // 두 번째 디코딩 (이중 인코딩된 경우 처리)
-      try {
-        const doubleDecoded = decodeURIComponent(decodedFileKey);
-        // 실제로 디코딩이 일어났는지 확인
-        if (doubleDecoded !== decodedFileKey) {
-          decodedFileKey = doubleDecoded;
-          this.logger.log(`🔄 [PROXY] Double decoding applied`);
-        }
-      } catch (e) {
-        // 두 번째 디코딩 실패는 정상 (이미 디코딩된 상태)
+      // 쿼리 파라미터 제거 (presigned URL 파라미터가 있을 수 있음)
+      if (processedFileKey.includes('?')) {
+        processedFileKey = processedFileKey.split('?')[0];
+        this.logger.log(`🧹 [PROXY] Cleaned fileKey (removed query params): ${processedFileKey}`);
       }
       
-      // 이미 presigned URL 쿼리 파라미터가 붙어있는 경우 제거
-      if (decodedFileKey.includes('?')) {
-        decodedFileKey = decodedFileKey.split('?')[0];
-        this.logger.log(`🧹 [PROXY] Cleaned fileKey (removed query params): ${decodedFileKey}`);
+      // uploads/ 접두사 확인 및 추가
+      if (!processedFileKey.startsWith('uploads/')) {
+        processedFileKey = `uploads/${processedFileKey}`;
+        this.logger.log(`📁 [PROXY] Added uploads/ prefix: ${processedFileKey}`);
       }
       
-      this.logger.log(`🔍 [PROXY] Original fileKey: ${fileKey}`);
-      this.logger.log(`📁 [PROXY] Final decoded fileKey: ${decodedFileKey}`);
+      this.logger.log(`📁 [PROXY] Final processed fileKey: ${processedFileKey}`);
       
-      const presignedUrl = await this.s3Service.generatePresignedDownloadUrl(decodedFileKey);
+      // S3에서 파일 존재 여부 확인 (선택사항 - 성능을 위해 생략 가능)
+      // const exists = await this.s3Service.checkFileExists(processedFileKey);
+      // if (!exists) {
+      //   throw new Error('File not found in S3');
+      // }
+      
+      const presignedUrl = await this.s3Service.generatePresignedDownloadUrl(processedFileKey);
       
       this.logger.log(`🔗 [PROXY] Generated presigned URL: ${presignedUrl.substring(0, 100)}...`);
       
-      // CORS 및 캐시 헤더 설정
-      res.set({
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Expose-Headers': 'Content-Type, Content-Length',
-        'Cache-Control': 'public, max-age=3600',
-        'Content-Type': 'image/*',
-      });
-      
-      // 302 리다이렉트 대신 이미지를 직접 스트리밍
+      // S3에서 이미지를 직접 스트리밍
       this.logger.log(`📡 [PROXY] Fetching image from S3...`);
       
       const s3Response = await fetch(presignedUrl);
       
       if (!s3Response.ok) {
+        this.logger.error(`❌ [PROXY] S3 fetch failed: ${s3Response.status} ${s3Response.statusText}`);
         throw new Error(`S3 fetch failed: ${s3Response.status}`);
       }
       
@@ -214,41 +210,43 @@ export class FilesController {
       const contentType = s3Response.headers.get('content-type') || 'image/*';
       const contentLength = s3Response.headers.get('content-length');
       
-      // 최종 응답 헤더 설정
+      // 캐시 및 컨텐츠 헤더 설정 (명시적 CORS 헤더 추가)
       res.set({
+        'Cache-Control': 'public, max-age=3600, immutable',
+        'Content-Type': contentType,
+        'ETag': `"${processedFileKey}"`,
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Expose-Headers': 'Content-Type, Content-Length',
-        'Cache-Control': 'public, max-age=3600',
-        'Content-Type': contentType,
+        'Cross-Origin-Resource-Policy': 'cross-origin',
       });
       
       if (contentLength) {
         res.set('Content-Length', contentLength);
       }
       
-      this.logger.log(`✅ [PROXY] Streaming image (${contentType})`);
+      this.logger.log(`✅ [PROXY] Streaming image (${contentType}, ${contentLength || 'unknown'} bytes)`);
       
       // 이미지 스트리밍
       const imageBuffer = await s3Response.arrayBuffer();
       res.send(Buffer.from(imageBuffer));
       
     } catch (error) {
-      this.logger.error(`Proxy error for file key: ${fileKey}`, error.message);
+      this.logger.error(`❌ [PROXY] Error for file key: ${fileKey}`, error.message);
       
-      // CORS 헤더 추가하여 에러 응답
+      // 에러 응답 헤더 설정 (명시적 CORS 헤더 추가)
       res.set({
+        'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Expose-Headers': 'Content-Type, Content-Length',
       });
       
       return res.status(404).json({ 
         statusCode: 404,
         message: 'File not found or access denied',
-        error: 'Not Found'
+        error: 'Not Found',
+        fileKey: fileKey
       });
     }
   }

@@ -5,9 +5,10 @@ import { PostsController } from './posts.controller';
 import { Post } from './entities/post.entity';
 import { File } from '../files/entities/file.entity';
 import { UsersModule } from '../users/users.module';
+import { FilesModule } from '../files/files.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Post, File]), UsersModule],
+  imports: [TypeOrmModule.forFeature([Post, File]), UsersModule, FilesModule],
   providers: [PostsService],
   controllers: [PostsController],
   exports: [PostsService],

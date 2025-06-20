@@ -1,0 +1,44 @@
+import { QueryClient } from '@tanstack/react-query';
+
+// 글로벌 QueryClient 인스턴스
+let queryClient: QueryClient | undefined;
+
+export function getQueryClient(): QueryClient {
+  if (typeof window === 'undefined') {
+    // 서버 사이드에서는 항상 새로운 인스턴스 생성
+    return new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 5 * 60 * 1000, // 5분
+          gcTime: 10 * 60 * 1000, // 10분
+          refetchOnWindowFocus: false,
+          retry: 1,
+        },
+        mutations: {
+          retry: 1,
+          retryDelay: 1000,
+        },
+      },
+    });
+  }
+
+  // 클라이언트 사이드에서는 싱글톤 패턴 사용
+  if (!queryClient) {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 5 * 60 * 1000, // 5분
+          gcTime: 10 * 60 * 1000, // 10분
+          refetchOnWindowFocus: false,
+          retry: 1,
+        },
+        mutations: {
+          retry: 1,
+          retryDelay: 1000,
+        },
+      },
+    });
+  }
+
+  return queryClient;
+} 

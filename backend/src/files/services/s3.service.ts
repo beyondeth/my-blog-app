@@ -5,11 +5,10 @@ import {
   PutObjectCommand, 
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command 
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { v4 as uuidv4 } from 'uuid';
-import * as path from 'path';
 
 export interface PresignedUrlResponse {
   uploadUrl: string;
@@ -43,45 +42,28 @@ export class S3Service {
   }
 
   /**
-   * Presigned URL 생성 (파일 업로드용)
+   * Presigned URL 생성 (파일 업로드용) - UUID 기반 S3 키 사용
    */
   async generatePresignedUploadUrl(
-    fileName: string,
+    s3Key: string, // UUID 기반 S3 키를 직접 받음
     mimeType: string,
     fileSize: number,
     fileType: string = 'general'
   ): Promise<PresignedUrlResponse> {
     try {
-      // 파일 확장자 추출
-      const ext = path.extname(fileName);
-      const nameWithoutExt = path.basename(fileName, ext);
-      
-      // UUID로 고유한 파일명 생성
-      const uniqueFileName = `${nameWithoutExt}-${uuidv4()}${ext}`;
-      
-      // 년/월 기반 폴더 구조
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      
-      // S3 키 생성
-      const fileKey = `uploads/${fileType}/${year}/${month}/${uniqueFileName}`;
-
       // MIME 타입 검증
       this.validateMimeType(mimeType, fileType);
 
       // PutObject 명령 생성
       const putObjectCommand = new PutObjectCommand({
         Bucket: this.bucket,
-        Key: fileKey,
+        Key: s3Key,
         ContentType: mimeType,
         ContentLength: fileSize,
-        // ACL 제거 - 버킷 정책으로 공개 읽기 권한 관리
         // 메타데이터 추가
         Metadata: {
-          'original-filename': fileName,
           'file-type': fileType,
-          'upload-date': now.toISOString(),
+          'upload-date': new Date().toISOString(),
         },
       });
 
@@ -92,11 +74,11 @@ export class S3Service {
         signableHeaders: new Set(['content-type']),
       });
 
-      this.logger.log(`Presigned URL generated for file: ${fileName} -> ${fileKey}`);
+      this.logger.log(`Presigned URL generated for S3 key: ${s3Key}`);
 
       return {
         uploadUrl,
-        fileKey,
+        fileKey: s3Key,
         expiresIn,
       };
     } catch (error) {
@@ -124,6 +106,29 @@ export class S3Service {
     } catch (error) {
       this.logger.error(`Failed to generate download URL: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to generate download URL');
+    }
+  }
+
+  /**
+   * 파일 존재 여부 확인
+   */
+  async checkFileExists(fileKey: string): Promise<boolean> {
+    try {
+      const headObjectCommand = new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: fileKey,
+      });
+
+      await this.s3Client.send(headObjectCommand);
+      this.logger.log(`File exists: ${fileKey}`);
+      return true;
+    } catch (error) {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+        this.logger.log(`File does not exist: ${fileKey}`);
+        return false;
+      }
+      this.logger.error(`Failed to check file existence: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to check file existence');
     }
   }
 

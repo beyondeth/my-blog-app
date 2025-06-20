@@ -2,197 +2,543 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* 폰트 직접 정의 */
+@font-face {
+  font-family: 'GeistMono';
+  src: url('./fonts/GeistMonoVF.woff') format('woff');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+  --font-pretendard: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+html {
+  font-family: var(--font-pretendard) !important;
 }
 
-/* Rich Text Editor 스타일 */
+body {
+  color: #333;
+  background: white;
+  font-family: var(--font-pretendard) !important;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* 모바일에서 가로 스크롤 방지 */
+  overflow-x: hidden;
+}
+
+/* 모든 텍스트 요소에 Pretendard 폰트 강제 적용 */
+* {
+  font-family: var(--font-pretendard) !important;
+  box-sizing: border-box;
+}
+
+/* 더 구체적인 선택자로 강제 적용 */
+html *, body *, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed, 
+figure, figcaption, footer, header, hgroup, 
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+  font-family: var(--font-pretendard) !important;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* 모바일 최적화 유틸리티 클래스 */
+@layer utilities {
+  .break-words-safe {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+  
+  .text-ellipsis-mobile {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  @media (max-width: 640px) {
+    .text-ellipsis-mobile {
+      max-width: calc(100vw - 2rem);
+    }
+  }
+}
+
+/* 블로그 콘텐츠 스타일 - Pretendard 폰트 적용 */
+.blog-content {
+  line-height: 1.5;
+  color: #333;
+  font-family: var(--font-pretendard) !important;
+  font-size: 14px !important;
+  -webkit-font-smoothing: antialiased;
+  /* 모바일에서 콘텐츠 오버플로우 방지 */
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.blog-content * {
+  font-family: var(--font-pretendard) !important;
+  color: #333 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  /* 모바일에서 텍스트 오버플로우 방지 */
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.blog-content h1,
+.blog-content h2,
+.blog-content h3,
+.blog-content h4,
+.blog-content h5,
+.blog-content h6 {
+  margin: 2rem 0 1rem 0;
+  font-weight: bold;
+  line-height: 1.3;
+  color: #222 !important;
+  font-family: var(--font-pretendard) !important;
+  word-break: break-word;
+}
+
+.blog-content h1 {
+  font-size: 20px !important;
+}
+
+@media (max-width: 640px) {
+  .blog-content h1 {
+    font-size: 18px !important;
+  }
+}
+
+.blog-content h2 {
+  font-size: 18px !important;
+}
+
+@media (max-width: 640px) {
+  .blog-content h2 {
+    font-size: 16px !important;
+  }
+}
+
+.blog-content h3 {
+  font-size: 16px !important;
+}
+
+@media (max-width: 640px) {
+  .blog-content h3 {
+    font-size: 15px !important;
+  }
+}
+
+.blog-content p {
+  margin: 1rem 0;
+  line-height: 1.5;
+  font-family: var(--font-pretendard) !important;
+  color: #333 !important;
+  font-size: 14px !important;
+  word-break: break-word;
+}
+
+.blog-content a {
+  color: #d97706 !important;
+  text-decoration: underline;
+  font-size: 14px !important;
+  word-break: break-all;
+}
+
+.blog-content a:hover {
+  color: #92400e !important;
+}
+
+.blog-content img {
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem 0;
+  border-radius: 0.25rem;
+  /* 모바일에서 이미지가 컨테이너를 벗어나지 않도록 */
+  object-fit: contain;
+}
+
+@media (max-width: 640px) {
+  .blog-content img {
+    margin: 1rem 0;
+    max-height: 60vh;
+  }
+}
+
+.blog-content pre {
+  background: #f3f4f6;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+  font-size: 13px !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  color: #333 !important;
+  line-height: 1.4 !important;
+  /* 모바일에서 코드 블록 스크롤 개선 */
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .blog-content pre {
+    padding: 0.75rem;
+    font-size: 12px !important;
+    margin: 0.75rem 0;
+  }
+}
+
+.blog-content code {
+  background: #f3f4f6;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 13px !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  color: #333 !important;
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .blog-content code {
+    font-size: 12px !important;
+  }
+}
+
+.blog-content pre code {
+  background: transparent;
+  padding: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  color: #333 !important;
+  font-size: 13px !important;
+  word-break: normal;
+}
+
+@media (max-width: 640px) {
+  .blog-content pre code {
+    font-size: 12px !important;
+  }
+}
+
+.blog-content blockquote {
+  border-left: 4px solid #d97706;
+  padding-left: 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: #333 !important;
+  font-family: var(--font-pretendard) !important;
+  font-size: 14px !important;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .blog-content blockquote {
+    padding-left: 0.75rem;
+    margin: 0.75rem 0;
+  }
+}
+
+.blog-content ul,
+.blog-content ol {
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+
+@media (max-width: 640px) {
+  .blog-content ul,
+  .blog-content ol {
+    padding-left: 1.25rem;
+    margin: 0.75rem 0;
+  }
+}
+
+.blog-content li {
+  margin: 0.25rem 0;
+  font-family: var(--font-pretendard) !important;
+  color: #333 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  word-break: break-word;
+}
+
+/* 텍스트 클램프 유틸리티 - 모바일 최적화 */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 768px) {
+  .line-clamp-3 {
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* 이미지 최적화 */
+img {
+  max-width: 100%;
+  height: auto;
+  /* 모바일에서 이미지 로딩 최적화 */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+@media (max-width: 640px) {
+  img {
+    max-height: 70vh;
+    object-fit: contain;
+  }
+}
+
+.image-proxy-container {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 0.25rem;
+}
+
+.image-proxy-container img {
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  transition: transform 0.2s ease-in-out;
+}
+
+@media (max-width: 640px) {
+  .image-proxy-container img {
+    max-height: 60vh;
+    object-fit: contain;
+  }
+}
+
+.image-proxy-container:hover img {
+  transform: scale(1.02);
+}
+
+/* ProseMirror 에디터 스타일 - 모바일 최적화 */
 .ProseMirror {
   outline: none;
   padding: 1rem;
-  min-height: 200px;
+  font-family: var(--font-pretendard) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: #333 !important;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
-.ProseMirror img {
+@media (max-width: 640px) {
+  .ProseMirror {
+    padding: 0.75rem;
+    font-size: 14px !important;
+  }
+}
+
+.ProseMirror * {
+  font-family: var(--font-pretendard) !important;
   max-width: 100%;
-  height: auto;
-  border-radius: 8px;
-  margin: 1rem 0;
-  display: block;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  word-break: break-word;
 }
 
 .ProseMirror p {
-  margin: 0.5rem 0;
+  margin: 1rem 0;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
 }
 
-.ProseMirror h1, .ProseMirror h2, .ProseMirror h3 {
-  margin: 1rem 0 0.5rem 0;
+.ProseMirror h1, 
+.ProseMirror h2, 
+.ProseMirror h3, 
+.ProseMirror h4, 
+.ProseMirror h5, 
+.ProseMirror h6 {
   font-weight: bold;
+  margin: 1.5rem 0 1rem 0;
+  color: #222 !important;
+  word-break: break-word;
 }
 
 .ProseMirror h1 { font-size: 2rem; }
 .ProseMirror h2 { font-size: 1.5rem; }
 .ProseMirror h3 { font-size: 1.25rem; }
 
+@media (max-width: 640px) {
+  .ProseMirror h1 { font-size: 1.5rem; }
+  .ProseMirror h2 { font-size: 1.25rem; }
+  .ProseMirror h3 { font-size: 1.125rem; }
+}
+
 .ProseMirror ul, .ProseMirror ol {
   padding-left: 1.5rem;
-  margin: 0.5rem 0;
+  margin: 1rem 0;
+}
+
+@media (max-width: 640px) {
+  .ProseMirror ul, .ProseMirror ol {
+    padding-left: 1.25rem;
+  }
 }
 
 .ProseMirror blockquote {
-  border-left: 4px solid #e5e7eb;
+  border-left: 4px solid #d97706;
   padding-left: 1rem;
   margin: 1rem 0;
   font-style: italic;
-  color: #6b7280;
+  color: #666 !important;
+  word-break: break-word;
 }
 
-/* 블로그 포스트 내 이미지 스타일 */
-.blog-content img {
-  max-width: 100% !important;
-  max-height: 500px !important;
-  width: auto !important;
-  height: auto !important;
-  border-radius: 8px;
-  margin: 1rem auto;
-  display: block;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  background-color: #f3f4f6;
-  object-fit: contain;
+@media (max-width: 640px) {
+  .ProseMirror blockquote {
+    padding-left: 0.75rem;
+  }
 }
 
-.blog-content img[src=""] {
-  display: none;
-}
-
-.blog-content img:not([src]) {
-  display: none;
-}
-
-.blog-content {
-  line-height: 1.7;
-}
-
-.blog-content p {
-  margin: 1rem 0;
-}
-
-.blog-content h1, .blog-content h2, .blog-content h3 {
-  margin: 2rem 0 1rem 0;
-  font-weight: bold;
-}
-
-.blog-content h1 { font-size: 2rem; }
-.blog-content h2 { font-size: 1.5rem; }
-.blog-content h3 { font-size: 1.25rem; }
-
-.blog-content ul, .blog-content ol {
-  padding-left: 1.5rem;
-  margin: 1rem 0;
-}
-
-.blog-content blockquote {
-  border-left: 4px solid #e5e7eb;
-  padding-left: 1rem;
-  margin: 1rem 0;
-  font-style: italic;
-  color: #6b7280;
-}
-
-/* 모든 이미지에 대한 전역 제한 */
-img {
-  max-width: 100% !important;
-  height: auto !important;
-  box-sizing: border-box;
-  object-fit: contain;
-}
-
-/* ImageProxy 컴포넌트 스타일 */
-.image-proxy-container {
+.ProseMirror img {
   max-width: 100%;
-  max-height: 100%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  height: auto;
+  border-radius: 0.25rem;
 }
 
-.image-proxy-container img {
-  max-width: 100% !important;
-  max-height: 100% !important;
-  width: auto !important;
-  height: auto !important;
-  object-fit: contain;
-  flex-shrink: 1;
+@media (max-width: 640px) {
+  .ProseMirror img {
+    max-height: 60vh;
+    object-fit: contain;
+  }
 }
 
-/* 포스트 카드 레이아웃 제약 */
-.post-card {
+.ProseMirror pre {
+  background: #f3f4f6;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  font-size: 13px !important;
   max-width: 100%;
-  overflow: hidden;
 }
 
-.post-card .post-content {
-  flex: 1;
-  min-width: 0; /* flexbox에서 텍스트 오버플로우 방지 */
+@media (max-width: 640px) {
+  .ProseMirror pre {
+    padding: 0.75rem;
+    font-size: 12px !important;
+  }
 }
 
-.post-card .post-image {
-  width: 192px !important;
-  height: 128px !important;
-  flex-shrink: 0 !important;
-  flex-grow: 0 !important;
+.ProseMirror code {
+  background: #f3f4f6;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  font-size: 13px !important;
+  word-break: break-all;
 }
 
-/* 썸네일 이미지 컨테이너 */
+@media (max-width: 640px) {
+  .ProseMirror code {
+    font-size: 12px !important;
+  }
+}
+
+.ProseMirror pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 13px !important;
+  word-break: normal;
+}
+
+@media (max-width: 640px) {
+  .ProseMirror pre code {
+    font-size: 12px !important;
+  }
+}
+
+/* 폼 요소 모바일 최적화 */
+input, textarea, button, select {
+  font-family: var(--font-pretendard) !important;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  input, textarea, button, select {
+    font-size: 16px; /* iOS에서 줌 방지 */
+  }
+}
+
+/* 썸네일 컨테이너 모바일 최적화 */
 .thumbnail-container {
-  width: 192px !important;
-  height: 128px !important;
-  max-width: 192px !important;
-  max-height: 128px !important;
-  min-width: 192px !important;
-  min-height: 128px !important;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
   position: relative;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  border-radius: 0.375rem;
+  background: #f3f4f6;
+}
+
+@media (max-width: 640px) {
+  .thumbnail-container {
+    height: 160px;
+  }
 }
 
 .thumbnail-container img {
-  max-width: 192px !important;
-  max-height: 128px !important;
-  width: auto !important;
-  height: auto !important;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  flex-shrink: 1;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  transition: transform 0.2s ease-in-out;
 }
+
+.thumbnail-container:hover img {
+  transform: scale(1.05);
+}
+
+/* 모바일 전용 스타일 */
+@media (max-width: 768px) {
+  .thumbnail-container {
+    height: 150px;
+  }
+  
+  /* 모바일에서 텍스트 크기 조정 */
+  .post-content .text-sm {
+    font-size: 14px !important;
+  }
+}
+

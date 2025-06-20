@@ -129,9 +129,8 @@ class ApiClient {
 
   private handleLogout(): void {
     this.removeStoredToken();
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      window.location.href = '/login';
-    }
+    // 자동 리다이렉트하지 않고 토큰만 제거
+    // 실제 로그아웃은 useAuth에서 처리
   }
 
   private handleError(error: any): ApiError {

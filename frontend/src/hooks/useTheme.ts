@@ -1,32 +1,52 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Theme } from '@/types';
+
+const THEME_STORAGE_KEY = 'theme';
+const VALID_THEMES: Theme[] = ['light', 'dark'];
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>('light');
+  const [isInitialized, setIsInitialized] = useState(false);
 
+  // 초기 테마 설정 (한 번만 실행)
   useEffect(() => {
-    // 로컬 스토리지에서 테마 설정 불러오기
-    const savedTheme = localStorage.getItem('theme') as Theme;
-    if (savedTheme) {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as Theme;
+      
+      if (savedTheme && VALID_THEMES.includes(savedTheme)) {
       setTheme(savedTheme);
     } else {
       // 시스템 테마 감지
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       setTheme(systemTheme);
+      }
+    } catch (error) {
+      console.warn('Failed to load theme from localStorage:', error);
+      setTheme('light'); // 폴백
+    } finally {
+      setIsInitialized(true);
     }
   }, []);
 
+  // 테마 변경 시 DOM 적용 (초기화 후에만)
   useEffect(() => {
-    // 테마 변경 시 DOM에 적용
+    if (!isInitialized || typeof window === 'undefined') return;
+    
+    try {
     const root = document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (error) {
+      console.warn('Failed to apply theme:', error);
+    }
+  }, [theme, isInitialized]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
+  }, []);
 
-  return { theme, toggleTheme };
+  return { theme, toggleTheme, isInitialized };
 } 

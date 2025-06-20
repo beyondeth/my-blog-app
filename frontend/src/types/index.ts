@@ -1,19 +1,35 @@
-// 사용자 관련 타입
+// 사용자 관련 타입 - 타입 안전성 개선
+export const UserRole = {
+  ADMIN: 'admin',
+  USER: 'user',
+  MODERATOR: 'moderator'
+} as const;
+
+export type UserRoleType = typeof UserRole[keyof typeof UserRole];
+
+export const AuthProvider = {
+  LOCAL: 'local',
+  GOOGLE: 'google',
+  KAKAO: 'kakao'
+} as const;
+
+export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
+
 export interface User {
-  id: number;
-  email: string;
-  username: string;
-  profileImage?: string;
-  role: 'admin' | 'user';
-  authProvider: 'local' | 'google' | 'kakao';
-  isEmailVerified: boolean;
-  createdAt: string;
-  updatedAt: string;
+  readonly id: number;
+  readonly email: string;
+  readonly username: string;
+  readonly profileImage?: string;
+  readonly role: UserRoleType;
+  readonly authProvider: AuthProviderType;
+  readonly isEmailVerified: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface AuthResponse {
-  access_token: string;
-  user: User;
+  readonly access_token: string;
+  readonly user: User;
 }
 
 export enum Role {
@@ -29,7 +45,7 @@ export interface AuthContextType {
   isAdmin: boolean;
   login: (credentials: LoginForm) => Promise<void>;
   register: (userData: RegisterForm) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (redirectTo?: string) => Promise<void>;
   refreshUser: () => Promise<void>;
   error: string | null;
 }
@@ -40,7 +56,6 @@ export interface Post {
   title: string;
   slug: string;
   content: string;
-  excerpt?: string;
   thumbnail?: string;
   isPublished: boolean;
   viewCount: number;
@@ -53,6 +68,7 @@ export interface Post {
   author: User;
   comments?: Comment[];
   likedBy?: User[];
+  attachedFiles?: FileUpload[];
 }
 
 // 댓글 관련 타입
@@ -101,7 +117,6 @@ export interface RegisterForm {
 export interface PostForm {
   title: string;
   content: string;
-  excerpt?: string;
   thumbnail?: string;
   tags?: string[];
   category?: string;
@@ -140,27 +155,36 @@ export interface UserActivity {
   createdAt: string;
 }
 
-// 파일 업로드 관련 타입
+// 파일 업로드 관련 타입 - 타입 안전성 개선
+export const FileType = {
+  IMAGE: 'image',
+  DOCUMENT: 'document',
+  VIDEO: 'video',
+  GENERAL: 'general'
+} as const;
+
+export type FileTypeType = typeof FileType[keyof typeof FileType];
+
 export interface FileUpload {
-  id: number;
-  originalName: string;
-  fileName: string;
-  fileKey: string;
-  fileUrl: string;
-  fileSize: number;
-  mimeType: string;
-  fileType: 'image' | 'document' | 'video' | 'general';
-  userId: number;
-  user?: User;
-  createdAt: string;
-  updatedAt: string;
+  readonly id: number;
+  readonly originalName: string;
+  readonly fileName: string;
+  readonly fileKey: string;
+  readonly fileUrl: string;
+  readonly fileSize: number;
+  readonly mimeType: string;
+  readonly fileType: FileTypeType;
+  readonly userId: number;
+  readonly user?: User;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface CreateUploadUrlDto {
   fileName: string;
   mimeType: string;
   fileSize: number;
-  fileType?: 'image' | 'document' | 'video' | 'general';
+  fileType?: FileTypeType;
 }
 
 export interface UploadCompleteDto {

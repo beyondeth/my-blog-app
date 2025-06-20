@@ -1,187 +1,249 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { useTheme } from '@/hooks/useTheme';
-import { FiHome, FiFileText, FiGrid, FiMessageSquare, FiSun, FiMoon, FiMenu, FiX } from 'react-icons/fi';
+import { FiEdit3, FiLogOut, FiMenu, FiX } from 'react-icons/fi';
+import { routes, navigation } from '@/lib/navigation';
 
 export default function Header() {
-  const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, isAdmin, logout } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
-  const handleLogout = () => {
-    logout();
-    setIsMenuOpen(false);
+  // 홈 페이지로 이동 (캐시 보존)
+  const handleHomeNavigation = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    // 모바일 메뉴 닫기
+    setIsMobileMenuOpen(false);
+    
+    // 이미 홈 페이지에 있다면 페이지 새로고침 방지
+    if (pathname === '/') {
+      // 스크롤을 맨 위로 이동
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    
+    // 다른 페이지에서 홈으로 이동
+    router.push(routes.home());
   };
 
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+
+  // 외부 클릭으로 메뉴 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    if (isMobileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscapeKey);
+      // 모바일 메뉴가 열렸을 때 스크롤 방지
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscapeKey);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isMobileMenuOpen]);
+
+  // 경로 변경 시 메뉴 닫기
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
+
   return (
-    <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* 로고 */}
-          <Link href="/" className="flex items-center space-x-2">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+    <header className="border-b border-gray-200 sticky top-0 z-50 bg-white" ref={mobileMenuRef}>
+      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-5">
+        <div className="flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center">
+            <a 
+              href={routes.home()}
+              onClick={handleHomeNavigation}
+              className="text-lg sm:text-xl font-normal text-amber-800 hover:text-amber-900 cursor-pointer"
+            >
               Dev Log
-            </h1>
-          </Link>
+            </a>
+          </div>
 
-          {/* 데스크톱 네비게이션 */}
-          <nav className="hidden md:flex items-center space-x-8">
-            <Link 
-              href="/" 
-              className="flex items-center space-x-1 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
+            <a 
+              href={routes.home()}
+              onClick={handleHomeNavigation}
+              className="text-sm text-gray-900 hover:text-amber-800 cursor-pointer"
             >
-              <FiHome className="w-4 h-4" />
-              <span>홈</span>
+              홈
+            </a>
+            <Link href="/posts" className="text-sm text-gray-900 hover:text-amber-800">
+              포스트
+            </Link>
+            <Link href="/categories" className="text-sm text-gray-900 hover:text-amber-800">
+              카테고리
+            </Link>
+            <Link href="/about" className="text-sm text-gray-900 hover:text-amber-800">
+              소개
             </Link>
             
-            <Link 
-              href="/posts" 
-              className="flex items-center space-x-1 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              <FiFileText className="w-4 h-4" />
-              <span>포스트</span>
-            </Link>
-            
-            <Link 
-              href="/categories" 
-              className="flex items-center space-x-1 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              <FiGrid className="w-4 h-4" />
-              <span>카테고리</span>
-            </Link>
-            
-            <Link 
-              href="/guestbook" 
-              className="flex items-center space-x-1 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              <FiMessageSquare className="w-4 h-4" />
-              <span>방명록</span>
-            </Link>
-          </nav>
-
-          {/* 우측 메뉴 */}
-          <div className="flex items-center space-x-4">
-            {/* 테마 토글 */}
-            <button
-              onClick={toggleTheme}
-              className="p-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              aria-label="테마 변경"
-            >
-              {theme === 'light' ? <FiMoon className="w-5 h-5" /> : <FiSun className="w-5 h-5" />}
-            </button>
-
-            {/* 사용자 메뉴 */}
-            {user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                >
-                  <span className="hidden sm:block">{user.username}</span>
-                  {user.profileImage ? (
-                    <img 
-                      src={user.profileImage} 
-                      alt={user.username}
-                      className="w-8 h-8 rounded-full"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                      {user.username.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </button>
-
-                {/* 드롭다운 메뉴 */}
-                {isMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50">
-                    {user.role === 'admin' && (
-                      <Link
-                        href="/admin"
-                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        관리자 대시보드
-                      </Link>
-                    )}
-                    <Link
-                      href="/profile"
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      onClick={() => setIsMenuOpen(false)}
+            {/* Desktop Auth Section */}
+            <div className="flex items-center space-x-4">
+              {user ? (
+                <>
+                  {/* Admin Write Button */}
+                  {isAdmin && (
+                    <Link 
+                      href={navigation.toPostNew()}
+                      className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-amber-700 hover:bg-amber-800 rounded-md transition-colors"
                     >
-                      프로필
+                      <FiEdit3 className="mr-1 w-4 h-4" />
+                      글쓰기
                     </Link>
+                  )}
+                  
+                  {/* User Menu */}
+                  <div className="flex items-center space-x-3">
+                    <span className="text-sm text-gray-600">
+                      {user.username}
+                    </span>
                     <button
-                      onClick={handleLogout}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      onClick={() => logout('/')}
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                      title="로그아웃"
                     >
-                      로그아웃
+                      <FiLogOut className="w-4 h-4" />
                     </button>
                   </div>
-                )}
-              </div>
-            ) : (
-              <Link
-                href="/login"
-                className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              >
-                로그인
-              </Link>
-            )}
+                </>
+              ) : (
+                <Link 
+                  href={routes.login()}
+                  className="text-sm text-gray-900 hover:text-amber-800"
+                >
+                  로그인
+                </Link>
+              )}
+            </div>
+          </nav>
 
-            {/* 모바일 메뉴 버튼 */}
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="md:hidden p-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              aria-label="메뉴 열기"
-            >
-              {isMenuOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
-            </button>
-          </div>
+          {/* Mobile Menu Button */}
+          <button
+            onClick={toggleMobileMenu}
+            className="md:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            aria-label={isMobileMenuOpen ? "메뉴 닫기" : "메뉴 열기"}
+            aria-expanded={isMobileMenuOpen}
+          >
+            {isMobileMenuOpen ? (
+              <FiX className="w-5 h-5" />
+            ) : (
+              <FiMenu className="w-5 h-5" />
+            )}
+          </button>
         </div>
 
-        {/* 모바일 메뉴 */}
-        {isMenuOpen && (
-          <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
-            <nav className="flex flex-col space-y-4">
-              <Link 
-                href="/" 
-                className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <FiHome className="w-4 h-4" />
-                <span>홈</span>
-              </Link>
-              
-              <Link 
-                href="/posts" 
-                className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <FiFileText className="w-4 h-4" />
-                <span>포스트</span>
-              </Link>
-              
-              <Link 
-                href="/categories" 
-                className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <FiGrid className="w-4 h-4" />
-                <span>카테고리</span>
-              </Link>
-              
-              <Link 
-                href="/guestbook" 
-                className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <FiMessageSquare className="w-4 h-4" />
-                <span>방명록</span>
-              </Link>
-            </nav>
+        {/* Mobile Navigation Menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden mt-4 pb-4 border-t border-gray-200 animate-in slide-in-from-top-1 duration-200">
+            <div className="pt-4 space-y-4">
+              {/* Navigation Links */}
+              <div className="space-y-3">
+                <a 
+                  href={routes.home()}
+                  onClick={handleHomeNavigation}
+                  className="block text-base text-gray-900 hover:text-amber-800 cursor-pointer py-2 px-2 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  홈
+                </a>
+                <Link 
+                  href="/posts" 
+                  onClick={closeMobileMenu}
+                  className="block text-base text-gray-900 hover:text-amber-800 py-2 px-2 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  포스트
+                </Link>
+                <Link 
+                  href="/categories" 
+                  onClick={closeMobileMenu}
+                  className="block text-base text-gray-900 hover:text-amber-800 py-2 px-2 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  카테고리
+                </Link>
+                <Link 
+                  href="/about" 
+                  onClick={closeMobileMenu}
+                  className="block text-base text-gray-900 hover:text-amber-800 py-2 px-2 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  소개
+                </Link>
+              </div>
+
+              {/* Mobile Auth Section */}
+              <div className="pt-4 border-t border-gray-100">
+                {user ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2 px-2 py-2">
+                      <span className="text-sm text-gray-600">
+                        {user.username}님
+                      </span>
+                    </div>
+                    
+                    {/* Admin Write Button */}
+                    {isAdmin && (
+                      <Link 
+                        href={navigation.toPostNew()}
+                        onClick={closeMobileMenu}
+                        className="inline-flex items-center px-4 py-3 text-sm font-medium text-white bg-amber-700 hover:bg-amber-800 rounded-md transition-colors w-full justify-center"
+                      >
+                        <FiEdit3 className="mr-2 w-4 h-4" />
+                        글쓰기
+                      </Link>
+                    )}
+                    
+                    <button
+                      onClick={() => {
+                        closeMobileMenu();
+                        logout('/');
+                      }}
+                      className="flex items-center space-x-2 text-sm text-gray-500 hover:text-gray-700 py-2 px-2 rounded-md hover:bg-gray-50 transition-colors w-full"
+                    >
+                      <FiLogOut className="w-4 h-4" />
+                      <span>로그아웃</span>
+                    </button>
+                  </div>
+                ) : (
+                  <Link 
+                    href={routes.login()}
+                    onClick={closeMobileMenu}
+                    className="block text-base text-gray-900 hover:text-amber-800 py-2 px-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    로그인
+                  </Link>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

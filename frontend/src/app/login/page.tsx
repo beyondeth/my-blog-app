@@ -21,12 +21,12 @@ export default function LoginPage() {
     password?: string;
   }>({});
 
-  // 이미 로그인된 사용자는 홈으로 리다이렉트
+  // 이미 로그인된 사용자는 홈으로 리다이렉트 - Context7 모범 사례: 조건부 실행
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       router.replace('/');
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading]); // router 의존성 제거 (안정적인 함수)
 
   const validateForm = (): boolean => {
     const errors: { email?: string; password?: string } = {};
