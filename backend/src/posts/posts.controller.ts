@@ -113,10 +113,8 @@ export class PostsController {
   async toggleLike(
     @Param('id') id: string,
     @CurrentUser() user: any,
-    @Ip() ip: string,
-    @Headers('user-agent') userAgent: string,
   ) {
-    return this.postsService.toggleLike(id, user, ip, userAgent);
+    return this.postsService.toggleLike(id, user);
   }
 
   @Post('generate-slugs')

@@ -9,25 +9,38 @@ import PostHeader from '@/components/posts/PostHeader';
 import AuthorInfo from '@/components/posts/AuthorInfo';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { useAuth } from '@/hooks/useAuth';
-import { usePost, useDeletePost, useTogglePostLike } from '@/hooks/usePosts';
+import { usePost, useDeletePost, useTogglePostLike, useBatchLikeManager } from '@/hooks/usePosts';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import LikeButton from '@/components/ui/LikeButton';
 
 export default function PostDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
   const hasViewed = useRef(false);
+  const { updateLike } = useBatchLikeManager();
 
   const slug = params.slug as string;
 
   // 상세 fetch는 여기서 한 번만
   const { data: post, isLoading, error, isError } = usePost(slug);
   const deletePostMutation = useDeletePost();
-  const likeMutation = useTogglePostLike(slug);
+  const likeMutation = useTogglePostLike(slug, () => {
+    alert('로그인이 필요합니다.\n로그인 후 좋아요를 누를 수 있습니다.');
+    // TODO: toast/모달/로그인 라우팅 등으로 대체 가능
+  });
+
+  useEffect(() => {
+    if (post) {
+      setLiked(post.liked);
+      setLikeCount(post.likeCount);
+    }
+  }, [post]);
 
   const handleEdit = useCallback(() => {
     if (post) {
@@ -61,23 +74,19 @@ export default function PostDetailPage() {
 
   const handleLike = useCallback(() => {
     if (!post) return;
-    // 1. Optimistic update: likeCount/liked 즉시 반영
-    queryClient.setQueryData(['posts', 'detail', slug], (old: any) => {
-      if (!old) return old;
-      return {
-        ...old,
-        likeCount: old.liked ? old.likeCount - 1 : old.likeCount + 1,
-        liked: !old.liked,
-      };
-    });
-    // 2. 서버에 요청
-    likeMutation.mutate(post.id, {
-      onError: () => {
-        // 실패 시 롤백
-        queryClient.setQueryData(['posts', 'detail', slug], post);
-      },
-    });
-  }, [post, likeMutation, queryClient, slug]);
+    // 즉시 UI 반영
+    if (liked) {
+      setLiked(false);
+      setLikeCount((c) => Math.max(0, c - 1));
+      updateLike(post.id, false);
+    } else {
+      setLiked(true);
+      setLikeCount((c) => c + 1);
+      updateLike(post.id, true);
+    }
+    // 서버 요청은 배치로만 처리 (즉시 요청 제거)
+    // likeMutation.mutate(post.id);
+  }, [post, liked, updateLike]);
 
   const handleShare = useCallback(async () => {
     if (navigator.share && post) {
@@ -160,14 +169,19 @@ export default function PostDetailPage() {
       {/* Article Content */}
       <article className="max-w-3xl mx-auto px-6 py-16">
         <PostHeader 
-          post={{ ...post, liked: post.liked, likeCount: post.likeCount }}
+          post={{ ...post, liked, likeCount }}
           canEdit={canEdit}
           onBack={handleBack}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          liked={post.liked}
-          likeCount={post.likeCount}
-          onLike={handleLike}
+          LikeButtonComponent={
+            <LikeButton
+              liked={liked}
+              likeCount={likeCount}
+              onClick={handleLike}
+              tooltip={!user ? '로그인 후 좋아요 가능' : undefined}
+            />
+          }
           onShare={handleShare}
         />
 

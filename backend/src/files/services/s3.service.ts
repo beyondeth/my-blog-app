@@ -155,36 +155,6 @@ export class S3Service {
   }
 
   /**
-   * 파일 URL 생성 (공개 접근용)
-   */
-  getPublicFileUrl(fileKey: string): string {
-    const region = this.configService.get('s3.region');
-    return `https://${this.bucket}.s3.${region}.amazonaws.com/${fileKey}`;
-  }
-
-  /**
-   * S3 파일 목록 조회 (디버깅용)
-   */
-  async listFiles(prefix: string = ''): Promise<string[]> {
-    try {
-      const listCommand = new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: prefix,
-        MaxKeys: 100, // 최대 100개
-      });
-
-      const response = await this.s3Client.send(listCommand);
-      const files = response.Contents?.map(obj => obj.Key || '') || [];
-      
-      this.logger.log(`Listed ${files.length} files with prefix: ${prefix}`);
-      return files.filter(key => key !== ''); // 빈 키 제거
-    } catch (error) {
-      this.logger.error(`Failed to list files: ${error.message}`, error.stack);
-      throw new InternalServerErrorException('Failed to list files');
-    }
-  }
-
-  /**
    * MIME 타입 검증
    */
   private validateMimeType(mimeType: string, fileType: string): void {

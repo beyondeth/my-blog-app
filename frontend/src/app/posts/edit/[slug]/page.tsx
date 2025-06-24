@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from 'next/navigation';
-import { usePost } from '@/hooks/usePost';
+import { usePost } from '@/hooks/usePosts';
 import { useUpdatePost } from '@/hooks/useUpdatePost';
 import EditPostForm from '@/components/posts/EditPostForm';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';

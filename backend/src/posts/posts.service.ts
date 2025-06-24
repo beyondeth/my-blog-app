@@ -7,6 +7,7 @@ import { File } from '../files/entities/file.entity';
 import { Role } from '../common/enums/role.enum';
 import { CreatePostDto } from './dto/create-post.dto';
 import { FilesService } from '../files/files.service';
+import { formatDate, extractImageUrlsFromContent, extractS3KeyFromUrl, generateSlug } from './utils/post.utils';
 
 @Injectable()
 export class PostsService {
@@ -82,13 +83,6 @@ export class PostsService {
       .getManyAndCount();
 
     // 날짜를 YYYY-MM-DD로 변환
-    const formatDate = (date: Date) => {
-      if (!date) return null;
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    };
     const postsWithFormattedDates = posts.map(post => ({
       ...post,
       publishedAt: formatDate(post.publishedAt),
@@ -120,17 +114,7 @@ export class PostsService {
       this.logger.warn(`Post not found for ID: ${id}`);
       throw new NotFoundException('Post not found');
     }
-    // 조회수 증가 (비동기 처리)
-    post.viewCount = (post.viewCount || 0) + 1;
-    this.postsRepository.save(post).catch(e => this.logger.error('viewCount update error', e));
     // 날짜 포맷 등 기존 가공 유지
-    const formatDate = (date: Date) => {
-      if (!date) return null;
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    };
     const result = {
       ...post,
       publishedAt: formatDate(post.publishedAt),
@@ -159,22 +143,15 @@ export class PostsService {
     if (!post) {
       throw new NotFoundException('Post not found');
     }
-    // 조회수 증가 (비동기 처리)
-    post.viewCount = (post.viewCount || 0) + 1;
-    this.postsRepository.save(post).catch(e => this.logger.error('viewCount update error', e));
-    const formatDate = (date: Date) => {
-      if (!date) return null;
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    };
-    return {
+    // 날짜 포맷 등 기존 가공 유지
+    const result = {
       ...post,
       publishedAt: formatDate(post.publishedAt),
       createdAt: formatDate(post.createdAt),
       updatedAt: formatDate(post.updatedAt),
     };
+    this.logger.log(`Returning post data with ${result.attachedFiles?.length || 0} attached files`);
+    return result;
   }
 
   async update(id: string, updatePostDto: any, user: User): Promise<any> {
@@ -370,10 +347,9 @@ export class PostsService {
     }
   }
 
-  // 좋아요 토글 (로그인/비로그인 모두 지원)
-  private likeCache = new Map<string, boolean>(); // 비로그인 유저용 메모리 캐시
-
-  async toggleLike(id: string, user: User, ip?: string, userAgent?: string): Promise<{ liked: boolean }> {
+  // 좋아요 토글 (로그인 유저만)
+  async toggleLike(id: string, user: User): Promise<{ liked: boolean }> {
+    if (!user?.id) throw new ForbiddenException('로그인한 유저만 좋아요를 누를 수 있습니다.');
     // QueryBuilder로 post + likedBy만 join해서 불필요한 데이터 로딩 최소화
     const post = await this.postsRepository.createQueryBuilder('post')
       .leftJoinAndSelect('post.likedBy', 'likedBy')
@@ -384,40 +360,24 @@ export class PostsService {
       ])
       .getOne();
     if (!post) throw new NotFoundException('Post not found');
-    let key = '';
-    let isLoggedIn = !!user?.id;
-    if (isLoggedIn) {
-      key = `like:${id}:${user.id}`;
-    } else if (ip && userAgent) {
-      key = `like:${id}:${ip}:${userAgent}`;
-    } else {
-      key = `like:${id}:unknown`;
-    }
-    // 로그인 유저: likedBy ManyToMany로 관리
-    if (isLoggedIn) {
-      const isLiked = post.likedBy?.some(likedUser => likedUser.id === user.id);
-      if (isLiked) {
-        post.likedBy = post.likedBy.filter(likedUser => likedUser.id !== user.id);
-        post.likeCount = Math.max(0, post.likeCount - 1);
-      } else {
-        if (!post.likedBy) post.likedBy = [];
-        post.likedBy.push(user);
-        post.likeCount++;
-      }
-      await this.postsRepository.save(post);
-      return { liked: !isLiked };
-    }
-    // 비로그인 유저: 메모리 캐시로 1번만 토글
-    const isLiked = this.likeCache.get(key) || false;
+    const isLiked = post.likedBy?.some(likedUser => likedUser.id === user.id);
     if (isLiked) {
-      this.likeCache.set(key, false);
+      post.likedBy = post.likedBy.filter(likedUser => likedUser.id !== user.id);
       post.likeCount = Math.max(0, post.likeCount - 1);
     } else {
-      this.likeCache.set(key, true);
+      if (!post.likedBy) post.likedBy = [];
+      post.likedBy.push(user);
       post.likeCount++;
     }
     await this.postsRepository.save(post);
     return { liked: !isLiked };
+  }
+
+  // 조회수 증가 (로그인 유저만)
+  private async incrementViewCount(post: Post, user: User) {
+    if (!user?.id) return;
+    post.viewCount = (post.viewCount || 0) + 1;
+    await this.postsRepository.save(post);
   }
 
   async getCategories(): Promise<string[]> {

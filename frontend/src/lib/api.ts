@@ -272,6 +272,13 @@ class ApiClient {
     });
   }
 
+  // 여러 포스트의 좋아요 상태를 한 번에 서버로 전송 (배치)
+  async batchUpdateLikes(batch: Record<number, boolean>): Promise<void> {
+    // TODO: 실제 엔드포인트에 맞게 구현
+    // return this.request({ method: 'POST', url: '/posts/likes/batch', data: batch });
+    return Promise.resolve();
+  }
+
   // Comments API
   async getComments(postId: number): Promise<Comment[]> {
     return this.request<Comment[]>({
@@ -445,6 +452,7 @@ export const postsAPI = {
   updatePost: (id: number, data: Partial<PostForm>) => apiClient.updatePost(id, data),
   deletePost: (id: number) => apiClient.deletePost(id),
   toggleLike: (id: number) => apiClient.toggleLike(id),
+  batchUpdateLikes: (batch: Record<number, boolean>) => apiClient.batchUpdateLikes(batch),
 };
 
 // Export for backward compatibility

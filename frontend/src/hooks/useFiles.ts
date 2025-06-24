@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { FileUpload, FileType, FileTypeType } from '@/types';
 import { getErrorMessage } from '@/utils/queryHelpers';
-import { convertImageToWebP } from '@/utils/imageUtils';
+import { convertImageToWebP, validateImageFile } from '@/utils/imageUtils';
 
 // File Query Keys
 export const fileQueryKeys = {
@@ -93,22 +93,6 @@ export function useDeleteFile() {
     },
     retry: 1,
   });
-}
-
-// 이미지 검증 유틸리티
-export function validateImageFile(file: File): { valid: boolean; error?: string } {
-  const maxSize = 10 * 1024 * 1024; // 10MB
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-
-  if (file.size > maxSize) {
-    return { valid: false, error: '파일 크기가 10MB를 초과합니다.' };
-  }
-
-  if (!allowedTypes.includes(file.type)) {
-    return { valid: false, error: '지원되지 않는 파일 형식입니다.' };
-  }
-
-  return { valid: true };
 }
 
 // 파일 크기 포맷팅 유틸리티

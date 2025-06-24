@@ -2,6 +2,7 @@
 
 import { FiUser, FiCalendar, FiEye, FiTag, FiArrowLeft, FiEdit3, FiTrash2, FiHeart, FiShare2 } from 'react-icons/fi';
 import { Post } from '@/types';
+import { ReactNode } from 'react';
 
 interface PostHeaderProps {
   post: Post;
@@ -13,6 +14,7 @@ interface PostHeaderProps {
   likeCount?: number;
   onLike?: () => void;
   onShare?: () => void;
+  LikeButtonComponent?: ReactNode;
 }
 
 export default function PostHeader({ 
@@ -24,7 +26,8 @@ export default function PostHeader({
   liked = false,
   likeCount = 0,
   onLike,
-  onShare
+  onShare,
+  LikeButtonComponent
 }: PostHeaderProps) {
   return (
     <header className="mb-8">
@@ -78,7 +81,9 @@ export default function PostHeader({
           </div>
           
           {/* Like and Share Buttons - 뷰 바로 옆에 붙임 */}
-          {onLike && (
+          {LikeButtonComponent ? (
+            LikeButtonComponent
+          ) : onLike && (
             <button
               onClick={onLike}
               className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs transition-colors ${

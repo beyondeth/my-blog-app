@@ -212,15 +212,6 @@ export class FilesService {
   }
 
   /**
-   * S3 키로 파일 조회 (UUID 기반)
-   */
-  async getFileByS3Key(s3Key: string): Promise<File | null> {
-    return await this.fileRepository.findOne({
-      where: { fileKey: s3Key },
-    });
-  }
-
-  /**
    * 파일 삭제
    */
   async deleteFile(fileId: string, userId: string): Promise<void> {
@@ -300,17 +291,5 @@ export class FilesService {
       this.logger.error(`Failed to check file existence: ${error.message}`, error.stack);
       return false;
     }
-  }
-
-  // 기존 메서드들 유지 (하위 호환성)
-  async findOne(id: string, userId: string): Promise<File> {
-    return this.getFileById(id, userId);
-  }
-
-  async findAll(limit: number = 20): Promise<File[]> {
-    return this.fileRepository.find({
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
   }
 } 

@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { postsAPI } from '@/lib/api';
 import { Post } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { useRef, useCallback } from 'react';
 
 // Query 키 팩토리 패턴
 export const postQueryKeys = {
@@ -140,20 +142,43 @@ export function useDeletePost() {
   });
 }
 
-// 포스트 좋아요 토글 뮤테이션 훅
-export function useTogglePostLike(slug: string | number) {
+// 포스트 좋아요 토글 뮤테이션 훅 (권장: 로그인 체크/낙관적 업데이트/롤백 일원화)
+export function useTogglePostLike(slug: string | number, onRequireLogin?: () => void) {
   const queryClient = useQueryClient();
-  
+  const { user } = useAuth();
+
   return useMutation({
-    mutationFn: (postId: number) => postsAPI.toggleLike(postId),
-    onSuccess: (response, postId) => {
-      // 낙관적 업데이트
-      queryClient.setQueryData(postQueryKeys.detail(slug), (oldData: Post | undefined) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          likeCount: response.liked ? oldData.likeCount + 1 : oldData.likeCount - 1,
-        };
+    mutationFn: (postId: number) => {
+      if (!user) {
+        if (onRequireLogin) onRequireLogin();
+        // 즉시 에러 발생시켜 onError로 분기
+        return Promise.reject(new Error('로그인이 필요합니다.'));
+      }
+      return postsAPI.toggleLike(postId);
+    },
+    onMutate: () => {
+      // 낙관적 업데이트: liked/likeCount
+      queryClient.setQueryData(postQueryKeys.detail(slug), (old: Post | undefined) => {
+        if (!old) return old;
+        const liked = !old.liked;
+        let likeCount = old.likeCount + (liked ? 1 : -1);
+        if (likeCount < 0) likeCount = 0;
+        return { ...old, liked, likeCount };
+      });
+    },
+    onError: (_, __, context) => {
+      // 롤백: 원래 데이터로 복구
+      queryClient.invalidateQueries({ queryKey: postQueryKeys.detail(slug) });
+    },
+    onSuccess: (response) => {
+      // 서버 응답에 따라 liked/likeCount 동기화
+      queryClient.setQueryData(postQueryKeys.detail(slug), (old: Post | undefined) => {
+        if (!old) return old;
+        const liked = response.liked;
+        let likeCount = old.likeCount;
+        if (liked && !old.liked) likeCount = old.likeCount + 1;
+        if (!liked && old.liked) likeCount = Math.max(0, old.likeCount - 1);
+        return { ...old, liked, likeCount };
       });
     },
     retry: 1,
@@ -170,4 +195,41 @@ export function usePrefetchPost() {
       ...commonQueryOptions,
     });
   };
+}
+
+// 여러 포스트의 좋아요 상태를 10분간 모아뒀다가 한 번에 서버로 전송하는 배치 훅
+// (debounce: 10분, 여러 포스트 동시 지원)
+export function useBatchLikeManager() {
+  // { [postId]: liked }
+  const pendingLikesRef = useRef<Record<number, boolean>>({});
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 서버로 배치 전송 (여러 포스트 동시)
+  const sendBatch = useCallback(() => {
+    const batch = pendingLikesRef.current;
+    if (Object.keys(batch).length === 0) return;
+    postsAPI.batchUpdateLikes(batch)
+      .then(() => { /* 성공 시 처리 (선택) */ })
+      .catch(() => { /* 실패 시 처리 (선택) */ });
+    pendingLikesRef.current = {};
+  }, []);
+
+  // 좋아요 상태 변경 시 호출
+  const updateLike = useCallback((postId: number, liked: boolean) => {
+    pendingLikesRef.current[postId] = liked;
+    // 기존 타이머 초기화
+    if (timerRef.current) clearTimeout(timerRef.current);
+    // 10분(600,000ms) 후에 배치 전송
+    timerRef.current = setTimeout(() => {
+      sendBatch();
+    }, 600000);
+  }, [sendBatch]);
+
+  // 강제 즉시 전송 (예: 페이지 이탈 등)
+  const flush = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    sendBatch();
+  }, [sendBatch]);
+
+  return { updateLike, flush };
 } 

@@ -44,7 +44,6 @@ export class FilesController {
   ) {}
 
   @Post('upload-url')
-  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '파일 업로드용 Presigned URL 생성' })
   @ApiResponse({ 
     status: 201, 
@@ -264,97 +263,5 @@ export class FilesController {
     return this.filesService.deleteFile(fileId, userId);
   }
 
-  @Get('test/s3-connection')
-  @Public()
-  @ApiOperation({ summary: 'S3 연결 테스트' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'S3 연결 테스트 성공',
-    schema: {
-      type: 'object',
-      properties: {
-        status: { type: 'string', example: 'success' },
-        message: { type: 'string', example: 'S3 connection test successful' },
-        bucket: { type: 'string', example: 'your-bucket-name' },
-        region: { type: 'string', example: 'us-east-1' },
-        testResult: { type: 'object' },
-      },
-    },
-  })
-  async testS3Connection() {
-    try {
-      // 테스트용 presigned URL 생성
-      const testResult = await this.s3Service.generatePresignedUploadUrl(
-        'test-file.txt',
-        'text/plain',
-        1024,
-        'general'
-      );
-
-      return {
-        status: 'success',
-        message: 'S3 connection test successful',
-        bucket: process.env.AWS_S3_BUCKET,
-        region: process.env.AWS_REGION,
-        testResult: {
-          uploadUrlGenerated: !!testResult.uploadUrl,
-          fileKey: testResult.fileKey,
-          expiresIn: testResult.expiresIn,
-        },
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: 'S3 connection test failed',
-        error: error.message,
-        bucket: process.env.AWS_S3_BUCKET,
-        region: process.env.AWS_REGION,
-      };
-    }
-  }
-
-  @Get('test/s3-files')
-  @Public()
-  @ApiOperation({ summary: 'S3 파일 목록 조회 (디버깅용)' })
-  async listS3Files(@Query('prefix') prefix: string = 'uploads/image/2025/06/') {
-    try {
-      const files = await this.s3Service.listFiles(prefix);
-      return {
-        status: 'success',
-        prefix,
-        files: files.slice(0, 20), // 최대 20개만 반환
-        total: files.length,
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: 'Failed to list S3 files',
-        error: error.message,
-      };
-    }
-  }
-
-  @Get('test/db-files')
-  @Public()
-  async getDbFiles(@Query('limit') limit: string = '20') {
-    try {
-      const files = await this.filesService.findAll(parseInt(limit));
-      return {
-        status: 'success',
-        total: files.length,
-        files: files.map(file => ({
-          id: file.id,
-          fileName: file.fileName,
-          fileUrl: file.fileUrl,
-          userId: file.userId,
-          createdAt: file.createdAt,
-        })),
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        message: error.message,
-      };
-    }
-  }
+  // test/s3-connection, test/s3-files, test/db-files 등 테스트/디버깅 엔드포인트 삭제 또는 주석 처리
 } 

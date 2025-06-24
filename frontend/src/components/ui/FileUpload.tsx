@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { FiUpload, FiFile, FiImage, FiVideo, FiX, FiCheck } from 'react-icons/fi';
 import { apiClient } from '@/lib/api';
 import { FileUpload as FileUploadType } from '@/types';
-import imageCompression from 'browser-image-compression';
+import { convertImageToWebP, validateImageFile } from '@/utils/imageUtils';
 
 interface FileUploadProps {
   onUploadComplete: (file: FileUploadType) => void;
@@ -33,43 +33,6 @@ export default function FileUpload({
   const [uploadedFile, setUploadedFile] = useState<FileUploadType | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validateFile = useCallback((file: File): string | null => {
-    if (file.size > maxSize) {
-      return `파일 크기가 ${Math.round(maxSize / 1024 / 1024)}MB를 초과합니다.`;
-    }
-
-    // MIME 타입 검증
-    const allowedTypes = {
-      image: ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
-      document: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-      video: ['video/mp4', 'video/mpeg', 'video/quicktime'],
-      general: [] // 모든 타입 허용
-    };
-
-    if (fileType !== 'general' && allowedTypes[fileType]) {
-      if (!allowedTypes[fileType].includes(file.type)) {
-        return `지원하지 않는 파일 형식입니다. (${allowedTypes[fileType].join(', ')})`;
-      }
-    }
-
-    return null;
-  }, [maxSize, fileType]);
-
-  const convertImageToWebP = async (file: File): Promise<File> => {
-    try {
-      const options = {
-        fileType: 'image/webp',
-        useWebWorker: true,
-        maxSizeMB: 5, // 필요시 조정
-        maxWidthOrHeight: 3840, // 필요시 조정
-      };
-      const webpFile = await imageCompression(file, options);
-      return new File([webpFile], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp' });
-    } catch (err) {
-      throw (err instanceof Error ? err.message : 'WebP 변환 실패');
-    }
-  };
-
   const uploadFile = useCallback(async (file: File) => {
     try {
       setUploading(true);
@@ -77,9 +40,9 @@ export default function FileUpload({
       onUploadStart?.();
 
       // 파일 검증
-      const validationError = validateFile(file);
-      if (validationError) {
-        onUploadError?.(validationError);
+      const validationResult = validateImageFile(file);
+      if (!validationResult.valid) {
+        onUploadError?.(validationResult.error || '파일 검증에 실패했습니다.');
         setUploading(false);
         return;
       }
@@ -114,7 +77,7 @@ export default function FileUpload({
     } finally {
       setUploading(false);
     }
-  }, [fileType, validateFile, onUploadComplete, onUploadStart, onUploadError]);
+  }, [fileType, onUploadComplete, onUploadStart, onUploadError]);
 
   const handleFileSelect = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;

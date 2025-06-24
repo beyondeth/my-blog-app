@@ -15,7 +15,8 @@ import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
 
 // 리팩토링된 훅들 사용
-import { useUploadFile, validateImageFile } from '@/hooks/useFiles';
+import { useUploadFile } from '@/hooks/useFiles';
+import { validateImageFile } from '@/utils/imageUtils';
 import { getProxyImageUrl, normalizeImageUrl, debugLog } from '@/utils/imageUtils';
 import { getErrorMessage } from '@/utils/queryHelpers';
 import EditorToolbar from './EditorToolbar';
