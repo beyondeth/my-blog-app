@@ -15,6 +15,7 @@ import SearchSection from '@/components/layout/SearchSection';
 import RecentPostsSection from '@/components/layout/RecentPostsSection';
 import TagsSection from '@/components/layout/TagsSection';
 import ProfileSection from '@/components/layout/ProfileSection';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 
 // 클라이언트 사이드 체크 훅 - Context7 모범 사례 적용
 function useIsClient() {
@@ -36,6 +37,17 @@ export default function HomePage() {
   const isClient = useIsClient();
   const searchParams = useSearchParams();
   const { getCacheStatus } = useNavigationCache();
+  
+  // 삭제 다이얼로그 상태
+  const [deleteDialog, setDeleteDialog] = useState<{
+    isOpen: boolean;
+    postId: number | null;
+    postTitle: string;
+  }>({
+    isOpen: false,
+    postId: null,
+    postTitle: ''
+  });
   
   // URL에서 검색 파라미터 파싱
   const currentParams = isClient ? parseSearchParams(searchParams.toString()) : { page: 1 };
@@ -106,11 +118,36 @@ export default function HomePage() {
     router.push(`/posts/edit/${slug}`);
   }, [router]);
 
+  // 삭제 다이얼로그 열기
   const handleDeletePost = useCallback((id: number) => {
-    if (confirm('정말로 이 게시글을 삭제하시겠습니까?')) {
-      deletePostMutation.mutate(id);
+    const post = allPosts.find(p => p.id === id);
+    setDeleteDialog({
+      isOpen: true,
+      postId: id,
+      postTitle: post?.title || '게시글'
+    });
+  }, [allPosts]);
+
+  // 삭제 확인
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteDialog.postId) {
+      deletePostMutation.mutate(deleteDialog.postId, {
+        onSuccess: () => {
+          setDeleteDialog({ isOpen: false, postId: null, postTitle: '' });
+        },
+        onError: () => {
+          // 에러 시에도 다이얼로그는 열어둠 (재시도 가능)
+        }
+      });
     }
-  }, [deletePostMutation]);
+  }, [deleteDialog.postId, deletePostMutation]);
+
+  // 삭제 다이얼로그 닫기
+  const handleCloseDeleteDialog = useCallback(() => {
+    if (!deletePostMutation.isPending) {
+      setDeleteDialog({ isOpen: false, postId: null, postTitle: '' });
+    }
+  }, [deletePostMutation.isPending]);
 
   if (!isClient) {
     return <LoadingSpinner message="페이지를 불러오는 중..." />;
@@ -147,7 +184,7 @@ export default function HomePage() {
                     userId={user?.id}
                     onEdit={handleEditPost}
                     onDelete={handleDeletePost}
-                    isDeleting={deletePostMutation.isPending}
+                    isDeleting={deletePostMutation.isPending && deleteDialog.postId === post.id}
                   />
                 ))}
                 
@@ -182,6 +219,17 @@ export default function HomePage() {
           <ProfileSection />
           </aside>
       </div>
+
+      {/* 삭제 확인 다이얼로그 */}
+      <DeleteConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={handleCloseDeleteDialog}
+        onConfirm={handleConfirmDelete}
+        isLoading={deletePostMutation.isPending}
+        itemName={`"${deleteDialog.postTitle}" 게시글`}
+        title="게시글을 삭제하시겠습니까?"
+        description={`"${deleteDialog.postTitle}" 게시글이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`}
+      />
     </div>
   );
 }

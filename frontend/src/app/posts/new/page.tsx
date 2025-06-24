@@ -37,15 +37,14 @@ export default function NewPostPage() {
     setError('');
 
     try {
-      await createPostMutation.mutateAsync({
+      const newPost = await createPostMutation.mutateAsync({
         title,
         content,
         category: category || undefined,
         attachedFileIds: attachedFileIds.length > 0 ? attachedFileIds : undefined,
       });
-      
-      // 성공 시 메인 페이지로 이동
-      router.push('/');
+      // 성공 시 해당 글 상세(slug) 페이지로 이동
+      router.push(`/posts/${newPost.slug || newPost.id}`);
     } catch (error: any) {
       setError(error.message || '게시글 작성에 실패했습니다.');
     }

@@ -128,17 +128,4 @@ export class Post {
       this.thumbnail = null;
     }
   }
-
-  // 콘텐츠에서 이미지 URL들 추출
-  getImageUrlsFromContent(): string[] {
-    const imgRegex = /<img[^>]+src="([^">]+)"/gi;
-    const matches = [];
-    let match;
-    
-    while ((match = imgRegex.exec(this.content)) !== null) {
-      matches.push(match[1]);
-    }
-    
-    return matches;
-  }
 } 

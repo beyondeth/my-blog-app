@@ -9,7 +9,7 @@ export const postQueryKeys = {
   list: (filters: { search?: string; category?: string }) => 
     [...postQueryKeys.lists(), filters] as const,
   details: () => [...postQueryKeys.all, 'detail'] as const,
-  detail: (id: string | number) => [...postQueryKeys.details(), id] as const,
+  detail: (slugOrId: string | number) => [...postQueryKeys.details(), slugOrId] as const,
 };
 
 // 공통 쿼리 옵션
@@ -48,14 +48,14 @@ export function useInfinitePosts(options: {
   });
 }
 
-// 단일 포스트 조회 훅
-export function usePost(slug: string | number) {
+// 단일 포스트 조회 훅 (상세)
+export function usePost(slugOrId: string | number) {
   return useQuery({
-    queryKey: postQueryKeys.detail(slug),
-    queryFn: () => postsAPI.getPostBySlug(slug.toString()),
-    enabled: !!slug,
+    queryKey: postQueryKeys.detail(slugOrId),
+    queryFn: () => postsAPI.getPostBySlug(slugOrId.toString()),
+    enabled: !!slugOrId,
     ...commonQueryOptions,
-    refetchOnMount: false,
+    refetchOnMount: false, // SSR/Prefetch 활용 시 false가 더 효율적
   });
 }
 
@@ -163,11 +163,10 @@ export function useTogglePostLike(slug: string | number) {
 // 포스트 프리페치 유틸리티
 export function usePrefetchPost() {
   const queryClient = useQueryClient();
-  
-  return (slug: string | number) => {
+  return (slugOrId: string | number) => {
     queryClient.prefetchQuery({
-      queryKey: postQueryKeys.detail(slug),
-      queryFn: () => postsAPI.getPostBySlug(slug.toString()),
+      queryKey: postQueryKeys.detail(slugOrId),
+      queryFn: () => postsAPI.getPostBySlug(slugOrId.toString()),
       ...commonQueryOptions,
     });
   };

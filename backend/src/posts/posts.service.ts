@@ -20,35 +20,34 @@ export class PostsService {
     private filesService: FilesService,
   ) {}
 
-  async create(createPostDto: CreatePostDto, user: User): Promise<Post> {
-    // 기본 게시글 데이터 생성
-    const postData = {
-      title: createPostDto.title,
-      content: createPostDto.content,
-      thumbnail: createPostDto.thumbnail,
-      tags: createPostDto.tags,
-      category: createPostDto.category,
+  async create(createPostDto: CreatePostDto, user: User): Promise<any> {
+    const post = this.postsRepository.create({
+      ...createPostDto,
       author: user,
       isPublished: user.role === Role.ADMIN,
       publishedAt: user.role === Role.ADMIN ? new Date() : null,
-    };
+    });
 
-    const post = this.postsRepository.create(postData);
-
-    // slug 고유성 보장
     await this.ensureUniqueSlug(post);
+    await this.postsRepository.save(post);
 
-    const savedPost = await this.postsRepository.save(post);
-
-    // 첨부 파일 처리
+    let attachedFiles: File[] = [];
     if (createPostDto.attachedFileIds?.length) {
-      await this.attachFiles(savedPost.id, createPostDto.attachedFileIds, user.id);
+      attachedFiles = await this.filesRepository.find({
+        where: { id: In(createPostDto.attachedFileIds), userId: user.id },
+      });
+      post.attachedFiles = attachedFiles;
+      await this.postsRepository.save(post);
     }
 
-    // 콘텐츠에서 파일 URL 추출하여 연결 (UUID 기반)
-    await this.linkFilesFromContent(savedPost);
+    await this.linkFilesFromContent(post);
 
-    return this.findPostById(savedPost.id);
+    // DB 재조회 없이 메모리에서 조합
+    return {
+      ...post,
+      author: user,
+      attachedFiles: post.attachedFiles || attachedFiles,
+    };
   }
 
   private async findPostById(id: string): Promise<Post> {
@@ -178,46 +177,48 @@ export class PostsService {
     };
   }
 
-  async update(id: string, updatePostDto: any, user: User): Promise<Post> {
-    const post = await this.findOne(id);
+  async update(id: string, updatePostDto: any, user: User): Promise<any> {
+    const post = await this.postsRepository.findOne({
+      where: { id },
+      relations: ['author', 'attachedFiles'],
+    });
 
+    if (!post) throw new NotFoundException('Post not found');
     if (post.author.id !== user.id && user.role !== Role.ADMIN) {
       throw new ForbiddenException('You can only update your own posts');
     }
 
-    // 콘텐츠가 변경되는 경우 사용되지 않는 이미지 파일 정리
     if (updatePostDto.content && updatePostDto.content !== post.content) {
       await this.cleanupUnusedImages(post.id, post.content, updatePostDto.content, user.id);
     }
 
     Object.assign(post, updatePostDto);
-    
-    // slug 업데이트 (제목이 변경된 경우)
+
     if (updatePostDto.title && updatePostDto.title !== post.title) {
       await this.ensureUniqueSlug(post);
     }
-
-    // 콘텐츠가 변경된 경우 썸네일 명시적으로 업데이트
     if (updatePostDto.content) {
-      const thumbnailUrl = this.extractThumbnailFromContent(updatePostDto.content);
-      post.thumbnail = thumbnailUrl;
-      this.logger.log(`Post ${id} thumbnail updated to: ${thumbnailUrl || 'null'}`);
+      post.thumbnail = this.extractThumbnailFromContent(updatePostDto.content);
     }
 
-    // 포스트 저장
-    const savedPost = await this.postsRepository.save(post);
-    
-    this.logger.log(`Post ${id} updated, thumbnail: ${savedPost.thumbnail || 'none'}`);
+    await this.postsRepository.save(post);
 
-    // 첨부 파일 업데이트
     if (updatePostDto.attachedFileIds !== undefined) {
-      await this.updateAttachedFiles(savedPost.id, updatePostDto.attachedFileIds, user.id);
+      const files = await this.filesRepository.find({
+        where: { id: In(updatePostDto.attachedFileIds), userId: user.id },
+      });
+      post.attachedFiles = files;
+      await this.postsRepository.save(post);
     }
 
-    // 콘텐츠에서 파일 URL 추출하여 연결 (UUID 기반)
-    await this.linkFilesFromContent(savedPost);
+    await this.linkFilesFromContent(post);
 
-    return this.findPostById(savedPost.id);
+    // DB 재조회 없이 메모리에서 조합
+    return {
+      ...post,
+      author: post.author,
+      attachedFiles: post.attachedFiles,
+    };
   }
 
   async remove(id: string, user: User): Promise<void> {
@@ -289,99 +290,32 @@ export class PostsService {
   }
 
   private async attachFiles(postId: string, fileIds: string[], userId: string): Promise<void> {
-    const post = await this.postsRepository.findOne({
-      where: { id: postId },
-      relations: ['attachedFiles'],
-    });
-
-    if (!post) return;
-
     const files = await this.filesRepository.find({
-      where: { 
-        id: In(fileIds),
-        userId: userId,
-      },
+      where: { id: In(fileIds), userId: userId },
     });
-
-    post.attachedFiles = files;
-    await this.postsRepository.save(post);
+    await this.postsRepository.update(postId, { attachedFiles: files });
   }
 
   private async updateAttachedFiles(postId: string, fileIds: string[], userId: string): Promise<void> {
-    const post = await this.postsRepository.findOne({
-      where: { id: postId },
-      relations: ['attachedFiles'],
-    });
-
-    if (!post) return;
-
-    // 기존 첨부 파일들 제거
-    post.attachedFiles = [];
-
-    if (fileIds && fileIds.length > 0) {
-      // 새로운 파일들 첨부
-      const files = await this.filesRepository.find({
-        where: { 
-          id: In(fileIds),
-          userId: userId,
-        },
-      });
-      post.attachedFiles = files;
-    }
-
-    await this.postsRepository.save(post);
+    const files = fileIds && fileIds.length > 0
+      ? await this.filesRepository.find({ where: { id: In(fileIds), userId: userId } })
+      : [];
+    await this.postsRepository.update(postId, { attachedFiles: files });
   }
 
-  // 콘텐츠에서 파일 URL을 찾아서 연결 (UUID 기반 개선)
   private async linkFilesFromContent(post: Post): Promise<void> {
     try {
-      const imageUrls = post.getImageUrlsFromContent();
-      
-      if (imageUrls.length === 0) {
-        this.logger.log(`No image URLs found in post ${post.id} content`);
-        return;
-      }
-
-      this.logger.log(`Found ${imageUrls.length} image URLs in post ${post.id}:`, imageUrls);
-
-      // UUID 기반 S3 키 추출
-      const s3Keys = imageUrls
-        .map(url => this.extractS3KeyFromUrl(url))
-        .filter(Boolean) as string[];
-      
-      if (s3Keys.length === 0) {
-        this.logger.warn(`No valid S3 keys extracted from URLs in post ${post.id}`);
-        return;
-      }
-
-      this.logger.log(`Extracted ${s3Keys.length} S3 keys:`, s3Keys);
-
-      // S3 키로 파일 찾기 (UUID 기반)
-      const files = await this.filesRepository.find({
-        where: { 
-          fileKey: In(s3Keys),
-          userId: post.author.id 
-        },
-      });
-
-      this.logger.log(`Found ${files.length} matching files in database`);
-
+      const imageUrls = this.extractImageUrlsFromContent(post.content);
+      if (imageUrls.length === 0) return;
+      const s3Keys = imageUrls.map(url => this.extractS3KeyFromUrl(url)).filter(Boolean) as string[];
+      if (s3Keys.length === 0) return;
+      const files = await this.filesRepository.find({ where: { fileKey: In(s3Keys), userId: post.author.id } });
       if (files.length > 0) {
-        const postWithFiles = await this.postsRepository.findOne({
-          where: { id: post.id },
-          relations: ['attachedFiles'],
-        });
-
-        // 기존 첨부 파일과 중복되지 않게 추가
-        const existingFileIds = postWithFiles.attachedFiles?.map(f => f.id) || [];
+        const existingFileIds = post.attachedFiles?.map(f => f.id) || [];
         const newFiles = files.filter(f => !existingFileIds.includes(f.id));
-
         if (newFiles.length > 0) {
-          postWithFiles.attachedFiles = [...(postWithFiles.attachedFiles || []), ...newFiles];
-          await this.postsRepository.save(postWithFiles);
-          this.logger.log(`Linked ${newFiles.length} new files to post ${post.id}`);
-        } else {
-          this.logger.log(`No new files to link for post ${post.id}`);
+          post.attachedFiles = [...(post.attachedFiles || []), ...newFiles];
+          await this.postsRepository.save(post);
         }
       }
     } catch (error) {

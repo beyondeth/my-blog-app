@@ -7,6 +7,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import PostHeader from '@/components/posts/PostHeader';
 import AuthorInfo from '@/components/posts/AuthorInfo';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { usePost, useDeletePost, useTogglePostLike } from '@/hooks/usePosts';
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -17,12 +18,13 @@ export default function PostDetailPage() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const [liked, setLiked] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
   const hasViewed = useRef(false);
 
   const slug = params.slug as string;
 
-  // 커스텀 훅 사용
+  // 상세 fetch는 여기서 한 번만
   const { data: post, isLoading, error, isError } = usePost(slug);
   const deletePostMutation = useDeletePost();
   const likeMutation = useTogglePostLike(slug);
@@ -33,15 +35,29 @@ export default function PostDetailPage() {
     }
   }, [post, router]);
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(() => {
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
     if (!post) return;
     
-    if (confirm('정말로 이 게시글을 삭제하시겠습니까?')) {
-      deletePostMutation.mutate(post.id, {
-        onSuccess: () => router.push('/'),
-      });
-    }
+    deletePostMutation.mutate(post.id, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        router.push('/');
+      },
+      onError: () => {
+        // 에러 시에도 다이얼로그는 열어둠 (재시도 가능)
+      }
+    });
   }, [post, deletePostMutation, router]);
+
+  const handleCloseDeleteDialog = useCallback(() => {
+    if (!deletePostMutation.isPending) {
+      setDeleteDialogOpen(false);
+    }
+  }, [deletePostMutation.isPending]);
 
   const handleLike = useCallback(() => {
     if (!post) return;
@@ -178,6 +194,15 @@ export default function PostDetailPage() {
 
         <AuthorInfo author={post.author} />
       </article>
+      <DeleteConfirmDialog
+        isOpen={deleteDialogOpen}
+        onClose={handleCloseDeleteDialog}
+        onConfirm={handleConfirmDelete}
+        isLoading={deletePostMutation.isPending}
+        itemName={`"${post?.title}" 게시글`}
+        title="게시글을 삭제하시겠습니까?"
+        description={`"${post?.title}" 게시글이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`}
+      />
     </>
   );
 } 

@@ -1,8 +1,12 @@
 {
 	"dependencies": {
+		"@hookform/resolvers": "^5.1.1",
+		"@radix-ui/react-alert-dialog": "^1.1.14",
+		"@radix-ui/react-dialog": "^1.1.14",
 		"@tanstack/query-sync-storage-persister": "^5.81.2",
 		"@tanstack/react-query": "^5.81.2",
 		"@tanstack/react-query-persist-client": "^5.81.2",
+		"react-hook-form": "^7.58.1",
 		"zod": "^3.25.67"
 	}
 }
