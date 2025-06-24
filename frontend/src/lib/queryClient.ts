@@ -1,4 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
+import { persistQueryClient } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 
 // 글로벌 QueryClient 인스턴스
 let queryClient: QueryClient | undefined;
@@ -38,6 +40,16 @@ export function getQueryClient(): QueryClient {
         },
       },
     });
+
+    // persistQueryClient 적용 (클라이언트에서만)
+    if (typeof window !== 'undefined') {
+      const persister = createSyncStoragePersister({ storage: window.localStorage });
+      persistQueryClient({
+        queryClient,
+        persister,
+        maxAge: 1000 * 60 * 10, // 10분
+      });
+    }
   }
 
   return queryClient;

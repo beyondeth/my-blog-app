@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like, In } from 'typeorm';
+import { Repository, Like, In, SelectQueryBuilder } from 'typeorm';
 import { Post } from './entities/post.entity';
 import { User } from '../users/entities/user.entity';
 import { File } from '../files/entities/file.entity';
@@ -51,7 +51,7 @@ export class PostsService {
     return this.findPostById(savedPost.id);
   }
 
-  private async findPostById(id: number): Promise<Post> {
+  private async findPostById(id: string): Promise<Post> {
     const post = await this.postsRepository.findOne({
       where: { id },
       relations: ['author', 'attachedFiles'],
@@ -102,25 +102,29 @@ export class PostsService {
     return { posts: postsWithFormattedDates, total };
   }
 
-  async findOne(id: number): Promise<any> {
+  async findOne(id: string): Promise<any> {
     this.logger.log(`Finding post by ID: ${id}`);
-    
-    const post = await this.postsRepository.findOne({
-      where: { id },
-      relations: ['author', 'comments', 'comments.author', 'attachedFiles'],
-    });
-
+    // QueryBuilder로 필요한 컬럼만 select, 불필요한 join 제거
+    const qb = this.postsRepository.createQueryBuilder('post')
+      .leftJoinAndSelect('post.author', 'author')
+      .leftJoinAndSelect('post.attachedFiles', 'file')
+      .select([
+        'post.id', 'post.title', 'post.slug', 'post.content', 'post.thumbnail',
+        'post.isPublished', 'post.viewCount', 'post.likeCount', 'post.tags', 'post.category',
+        'post.publishedAt', 'post.createdAt', 'post.updatedAt',
+        'author.id', 'author.username', 'author.profileImage', 'author.role',
+        'file.id', 'file.fileUrl', 'file.fileType',
+      ])
+      .where('post.id = :id', { id });
+    const post = await qb.getOne();
     if (!post) {
       this.logger.warn(`Post not found for ID: ${id}`);
       throw new NotFoundException('Post not found');
     }
-
-    this.logger.log(`Post found: ${post.title} (${post.attachedFiles?.length || 0} attached files)`);
-
-    // 조회수 증가
-    await this.incrementViewCount(id);
-
-    // 날짜를 YYYY-MM-DD로 변환
+    // 조회수 증가 (비동기 처리)
+    post.viewCount = (post.viewCount || 0) + 1;
+    this.postsRepository.save(post).catch(e => this.logger.error('viewCount update error', e));
+    // 날짜 포맷 등 기존 가공 유지
     const formatDate = (date: Date) => {
       if (!date) return null;
       const y = date.getFullYear();
@@ -128,33 +132,37 @@ export class PostsService {
       const d = String(date.getDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
     };
-    
     const result = {
       ...post,
       publishedAt: formatDate(post.publishedAt),
       createdAt: formatDate(post.createdAt),
       updatedAt: formatDate(post.updatedAt),
     };
-    
     this.logger.log(`Returning post data with ${result.attachedFiles?.length || 0} attached files`);
-    
     return result;
   }
 
   async findBySlug(slug: string): Promise<any> {
-    const post = await this.postsRepository.findOne({
-      where: { slug, isPublished: true },
-      relations: ['author', 'comments', 'comments.author', 'attachedFiles'],
-    });
-
+    // QueryBuilder로 필요한 컬럼만 select, 불필요한 join 제거
+    const qb = this.postsRepository.createQueryBuilder('post')
+      .leftJoinAndSelect('post.author', 'author')
+      .leftJoinAndSelect('post.attachedFiles', 'file')
+      .select([
+        'post.id', 'post.title', 'post.slug', 'post.content', 'post.thumbnail',
+        'post.isPublished', 'post.viewCount', 'post.likeCount', 'post.tags', 'post.category',
+        'post.publishedAt', 'post.createdAt', 'post.updatedAt',
+        'author.id', 'author.username', 'author.profileImage', 'author.role',
+        'file.id', 'file.fileUrl', 'file.fileType',
+      ])
+      .where('post.slug = :slug', { slug })
+      .andWhere('post.isPublished = :isPublished', { isPublished: true });
+    const post = await qb.getOne();
     if (!post) {
       throw new NotFoundException('Post not found');
     }
-
-    // 조회수 증가
-    await this.incrementViewCount(post.id);
-
-    // 날짜를 YYYY-MM-DD로 변환
+    // 조회수 증가 (비동기 처리)
+    post.viewCount = (post.viewCount || 0) + 1;
+    this.postsRepository.save(post).catch(e => this.logger.error('viewCount update error', e));
     const formatDate = (date: Date) => {
       if (!date) return null;
       const y = date.getFullYear();
@@ -170,7 +178,7 @@ export class PostsService {
     };
   }
 
-  async update(id: number, updatePostDto: any, user: User): Promise<Post> {
+  async update(id: string, updatePostDto: any, user: User): Promise<Post> {
     const post = await this.findOne(id);
 
     if (post.author.id !== user.id && user.role !== Role.ADMIN) {
@@ -212,7 +220,7 @@ export class PostsService {
     return this.findPostById(savedPost.id);
   }
 
-  async remove(id: number, user: User): Promise<void> {
+  async remove(id: string, user: User): Promise<void> {
     const post = await this.findOne(id);
 
     if (post.author.id !== user.id && user.role !== Role.ADMIN) {
@@ -242,14 +250,14 @@ export class PostsService {
     return { posts, total };
   }
 
-  async publish(id: number): Promise<Post> {
+  async publish(id: string): Promise<Post> {
     const post = await this.findOne(id);
     post.isPublished = true;
     post.publishedAt = new Date();
     return this.postsRepository.save(post);
   }
 
-  async unpublish(id: number): Promise<Post> {
+  async unpublish(id: string): Promise<Post> {
     const post = await this.findOne(id);
     post.isPublished = false;
     post.publishedAt = null;
@@ -280,7 +288,7 @@ export class PostsService {
     };
   }
 
-  private async attachFiles(postId: number, fileIds: number[], userId: number): Promise<void> {
+  private async attachFiles(postId: string, fileIds: string[], userId: string): Promise<void> {
     const post = await this.postsRepository.findOne({
       where: { id: postId },
       relations: ['attachedFiles'],
@@ -299,7 +307,7 @@ export class PostsService {
     await this.postsRepository.save(post);
   }
 
-  private async updateAttachedFiles(postId: number, fileIds: number[], userId: number): Promise<void> {
+  private async updateAttachedFiles(postId: string, fileIds: string[], userId: string): Promise<void> {
     const post = await this.postsRepository.findOne({
       where: { id: postId },
       relations: ['attachedFiles'],
@@ -428,23 +436,52 @@ export class PostsService {
     }
   }
 
-  async incrementViewCount(id: number): Promise<void> {
-    await this.postsRepository.increment({ id }, 'viewCount', 1);
-  }
+  // 좋아요 토글 (로그인/비로그인 모두 지원)
+  private likeCache = new Map<string, boolean>(); // 비로그인 유저용 메모리 캐시
 
-  async toggleLike(id: number, user: User): Promise<{ liked: boolean }> {
-    const post = await this.findOne(id);
-    const isLiked = post.likedBy?.some(likedUser => likedUser.id === user.id);
-
-    if (isLiked) {
-      post.likedBy = post.likedBy.filter(likedUser => likedUser.id !== user.id);
-      post.likeCount--;
+  async toggleLike(id: string, user: User, ip?: string, userAgent?: string): Promise<{ liked: boolean }> {
+    // QueryBuilder로 post + likedBy만 join해서 불필요한 데이터 로딩 최소화
+    const post = await this.postsRepository.createQueryBuilder('post')
+      .leftJoinAndSelect('post.likedBy', 'likedBy')
+      .where('post.id = :id', { id })
+      .select([
+        'post.id', 'post.likeCount',
+        'likedBy.id',
+      ])
+      .getOne();
+    if (!post) throw new NotFoundException('Post not found');
+    let key = '';
+    let isLoggedIn = !!user?.id;
+    if (isLoggedIn) {
+      key = `like:${id}:${user.id}`;
+    } else if (ip && userAgent) {
+      key = `like:${id}:${ip}:${userAgent}`;
     } else {
-      if (!post.likedBy) post.likedBy = [];
-      post.likedBy.push(user);
+      key = `like:${id}:unknown`;
+    }
+    // 로그인 유저: likedBy ManyToMany로 관리
+    if (isLoggedIn) {
+      const isLiked = post.likedBy?.some(likedUser => likedUser.id === user.id);
+      if (isLiked) {
+        post.likedBy = post.likedBy.filter(likedUser => likedUser.id !== user.id);
+        post.likeCount = Math.max(0, post.likeCount - 1);
+      } else {
+        if (!post.likedBy) post.likedBy = [];
+        post.likedBy.push(user);
+        post.likeCount++;
+      }
+      await this.postsRepository.save(post);
+      return { liked: !isLiked };
+    }
+    // 비로그인 유저: 메모리 캐시로 1번만 토글
+    const isLiked = this.likeCache.get(key) || false;
+    if (isLiked) {
+      this.likeCache.set(key, false);
+      post.likeCount = Math.max(0, post.likeCount - 1);
+    } else {
+      this.likeCache.set(key, true);
       post.likeCount++;
     }
-
     await this.postsRepository.save(post);
     return { liked: !isLiked };
   }
@@ -547,7 +584,7 @@ export class PostsService {
   }
 
   // 사용되지 않는 이미지 파일 정리 (S3 + DB)
-  private async cleanupUnusedImages(postId: number, oldContent: string, newContent: string, userId: number): Promise<void> {
+  private async cleanupUnusedImages(postId: string, oldContent: string, newContent: string, userId: string): Promise<void> {
     try {
       // 기존 콘텐츠와 새 콘텐츠에서 이미지 URL 추출
       const oldImageUrls = this.extractImageUrlsFromContent(oldContent);
@@ -586,7 +623,7 @@ export class PostsService {
       // 각 파일을 S3와 DB에서 삭제
       for (const file of filesToDelete) {
         try {
-          // S3에서 파일 삭제
+          // S3에서 파일 삭제 - 임시 타입 캐스팅
           await this.filesService.deleteFile(file.id, userId);
           this.logger.log(`✅ Deleted file: ${file.fileKey} (ID: ${file.id})`);
         } catch (error) {

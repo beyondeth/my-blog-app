@@ -55,6 +55,7 @@ export function usePost(slug: string | number) {
     queryFn: () => postsAPI.getPostBySlug(slug.toString()),
     enabled: !!slug,
     ...commonQueryOptions,
+    refetchOnMount: false,
   });
 }
 
@@ -64,8 +65,40 @@ export function useCreatePost() {
   
   return useMutation({
     mutationFn: postsAPI.createPost,
-    onSuccess: () => {
+    onSuccess: (newPost) => {
+      // 1. 모든 목록 쿼리 무효화 (검색, 카테고리 등 모든 필터 조건)
       queryClient.invalidateQueries({ queryKey: postQueryKeys.lists() });
+      
+      // 2. 무한 스크롤 쿼리의 첫 번째 페이지에 새 게시글 추가 (낙관적 업데이트)
+      queryClient.setQueriesData(
+        { queryKey: postQueryKeys.lists() },
+        (oldData: any) => {
+          if (!oldData || !oldData.pages) return oldData;
+          
+          // 첫 번째 페이지에 새 게시글을 맨 앞에 추가
+          const newPages = [...oldData.pages];
+          if (newPages[0]) {
+            newPages[0] = {
+              ...newPages[0],
+              posts: [newPost, ...newPages[0].posts],
+              total: newPages[0].total + 1,
+            };
+          }
+          
+          return {
+            ...oldData,
+            pages: newPages,
+          };
+        }
+      );
+      
+      // 3. 생성된 게시글의 개별 캐시도 설정
+      if (newPost.id) {
+        queryClient.setQueryData(postQueryKeys.detail(newPost.id), newPost);
+      }
+      if (newPost.slug) {
+        queryClient.setQueryData(postQueryKeys.detail(newPost.slug), newPost);
+      }
     },
     retry: 1,
   });

@@ -60,6 +60,7 @@ export interface Post {
   isPublished: boolean;
   viewCount: number;
   likeCount: number;
+  liked: boolean;
   tags?: string[];
   category?: string;
   createdAt: string;
@@ -120,6 +121,7 @@ export interface PostForm {
   thumbnail?: string;
   tags?: string[];
   category?: string;
+  attachedFileIds?: string[];
 }
 
 export interface CommentForm {

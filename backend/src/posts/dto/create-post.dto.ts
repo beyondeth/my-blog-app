@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePostDto {
@@ -42,11 +42,11 @@ export class CreatePostDto {
   category?: string;
 
   @ApiPropertyOptional({
-    description: '첨부 파일 ID 배열',
-    example: [1, 2, 3],
+    description: '첨부 파일 ID 배열 (UUID)',
+    example: ['uuid1', 'uuid2', 'uuid3'],
   })
   @IsOptional()
   @IsArray()
-  @IsNumber({}, { each: true })
-  attachedFileIds?: number[];
+  @IsString({ each: true })
+  attachedFileIds?: string[];
 } 

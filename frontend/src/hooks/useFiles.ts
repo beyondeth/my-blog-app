@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { FileUpload, FileType, FileTypeType } from '@/types';
 import { getErrorMessage } from '@/utils/queryHelpers';
+import { convertImageToWebP } from '@/utils/imageUtils';
 
 // File Query Keys
 export const fileQueryKeys = {
@@ -27,7 +28,7 @@ export function useFiles(params?: {
   });
 }
 
-// 파일 업로드 뮤테이션 훅 - 타입 안전성 개선
+// 파일 업로드 뮤테이션 훅 - WebP 변환 로직 추가
 export function useUploadFile() {
   const queryClient = useQueryClient();
   
@@ -37,7 +38,32 @@ export function useUploadFile() {
       const validFileType = fileType && Object.values(FileType).includes(fileType) 
         ? fileType 
         : FileType.GENERAL;
-      return await apiClient.uploadFile(file, validFileType);
+      
+      let fileToUpload = file;
+      
+      // 이미지 파일이고 WebP가 아니면 변환
+      if (validFileType === FileType.IMAGE && file.type !== 'image/webp') {
+        try {
+          console.log('[useUploadFile] Converting image to WebP:', {
+            originalName: file.name,
+            originalType: file.type,
+            originalSize: file.size
+          });
+          
+          fileToUpload = await convertImageToWebP(file);
+          
+          console.log('[useUploadFile] WebP conversion completed:', {
+            convertedName: fileToUpload.name,
+            convertedType: fileToUpload.type,
+            convertedSize: fileToUpload.size
+          });
+        } catch (error) {
+          console.error('[useUploadFile] WebP conversion failed:', error);
+          throw new Error(typeof error === 'string' ? error : 'WebP 변환에 실패했습니다. 이미지는 WebP 형식만 업로드할 수 있습니다.');
+        }
+      }
+      
+      return await apiClient.uploadFile(fileToUpload, validFileType);
     },
     onSuccess: () => {
       // 파일 목록 캐시 무효화

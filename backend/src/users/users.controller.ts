@@ -31,7 +31,7 @@ export class UsersController {
   @Get(':id')
   @ApiOperation({ summary: '특정 사용자 조회' })
   findOne(@Param('id') id: string) {
-    return this.usersService.findOne(+id);
+    return this.usersService.findOne(id);
   }
 
   @Put('profile')
@@ -48,6 +48,6 @@ export class UsersController {
   @ApiOperation({ summary: '사용자 삭제 (관리자만)' })
   @ApiBearerAuth()
   remove(@Param('id') id: string) {
-    return this.usersService.remove(+id);
+    return this.usersService.remove(id);
   }
 } 

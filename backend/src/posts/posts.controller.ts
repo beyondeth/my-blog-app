@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, Ip, Headers } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -79,7 +79,7 @@ export class PostsController {
   @Public()
   @ApiOperation({ summary: '게시글 상세 조회' })
   findOne(@Param('id') id: string) {
-    return this.postsService.findOne(+id);
+    return this.postsService.findOne(id);
   }
 
   @Get('slug/:slug')
@@ -95,7 +95,7 @@ export class PostsController {
   @ApiOperation({ summary: '게시글 수정' })
   @ApiBearerAuth()
   update(@Param('id') id: string, @Body() updatePostDto: any, @CurrentUser() user: User) {
-    return this.postsService.update(+id, updatePostDto, user);
+    return this.postsService.update(id, updatePostDto, user);
   }
 
   @Delete(':id')
@@ -104,15 +104,19 @@ export class PostsController {
   @ApiOperation({ summary: '게시글 삭제' })
   @ApiBearerAuth()
   remove(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.postsService.remove(+id, user);
+    return this.postsService.remove(id, user);
   }
 
   @Post(':id/like')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: '게시글 좋아요 토글' })
-  @ApiBearerAuth()
-  toggleLike(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.postsService.toggleLike(+id, user);
+  @Public()
+  @ApiOperation({ summary: '게시글 좋아요 토글 (로그인/비로그인 모두 지원)' })
+  async toggleLike(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return this.postsService.toggleLike(id, user, ip, userAgent);
   }
 
   @Post('generate-slugs')
@@ -134,8 +138,4 @@ export class PostsController {
     await this.postsService.relinkContentFiles();
     return { message: 'Files relinked successfully' };
   }
-
-
-
-
 } 

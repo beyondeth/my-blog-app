@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { FiUpload, FiFile, FiImage, FiVideo, FiX, FiCheck } from 'react-icons/fi';
 import { apiClient } from '@/lib/api';
 import { FileUpload as FileUploadType } from '@/types';
+import imageCompression from 'browser-image-compression';
 
 interface FileUploadProps {
   onUploadComplete: (file: FileUploadType) => void;
@@ -54,6 +55,21 @@ export default function FileUpload({
     return null;
   }, [maxSize, fileType]);
 
+  const convertImageToWebP = async (file: File): Promise<File> => {
+    try {
+      const options = {
+        fileType: 'image/webp',
+        useWebWorker: true,
+        maxSizeMB: 5, // 필요시 조정
+        maxWidthOrHeight: 3840, // 필요시 조정
+      };
+      const webpFile = await imageCompression(file, options);
+      return new File([webpFile], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp' });
+    } catch (err) {
+      throw (err instanceof Error ? err.message : 'WebP 변환 실패');
+    }
+  };
+
   const uploadFile = useCallback(async (file: File) => {
     try {
       setUploading(true);
@@ -64,12 +80,31 @@ export default function FileUpload({
       const validationError = validateFile(file);
       if (validationError) {
         onUploadError?.(validationError);
+        setUploading(false);
         return;
       }
 
-      // 파일 업로드
-      const uploadedFile = await apiClient.uploadFile(file, fileType);
-      
+      let fileToUpload = file;
+      // 이미지이고 WebP가 아니면 변환
+      if (fileType === 'image' && file.type !== 'image/webp') {
+        try {
+          fileToUpload = await convertImageToWebP(file);
+        } catch (err) {
+          onUploadError?.(typeof err === 'string' ? err : 'WebP 변환에 실패했습니다. 이미지는 WebP 형식만 업로드할 수 있습니다.');
+          setUploading(false);
+          return; // presigned URL 요청 자체를 하지 않음
+        }
+      }
+
+      // presigned URL 요청 직전, 실제 업로드할 파일 정보 디버깅 출력 (눈에 띄게)
+      console.log('==================== [DEBUG] presigned URL 요청 파일 정보 ====================');
+      console.log('fileToUpload.name:', fileToUpload.name);
+      console.log('fileToUpload.type:', fileToUpload.type);
+      console.log('fileToUpload.size:', fileToUpload.size);
+      console.log('=============================================================================');
+
+      // 반드시 변환된 WebP 파일 정보로 업로드 진행
+      const uploadedFile = await apiClient.uploadFile(fileToUpload, fileType);
       setProgress(100);
       setUploadedFile(uploadedFile);
       onUploadComplete(uploadedFile);

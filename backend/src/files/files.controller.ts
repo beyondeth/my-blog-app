@@ -44,6 +44,7 @@ export class FilesController {
   ) {}
 
   @Post('upload-url')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: '파일 업로드용 Presigned URL 생성' })
   @ApiResponse({ 
     status: 201, 
@@ -60,10 +61,10 @@ export class FilesController {
   })
   @ApiResponse({ status: 400, description: '잘못된 요청' })
   async createUploadUrl(
-    @CurrentUser('id') userId: number,
+    @CurrentUser('id') userId: string,
     @Body() createUploadUrlDto: CreateUploadUrlDto,
   ) {
-    return this.filesService.createUploadUrl(userId, createUploadUrlDto);
+    return this.filesService.createUploadUrl(userId as any, createUploadUrlDto);
   }
 
   @Post('upload-complete')
@@ -71,10 +72,10 @@ export class FilesController {
   @ApiResponse({ status: 201, description: '파일 업로드 완료' })
   @ApiResponse({ status: 400, description: '잘못된 요청' })
   async uploadComplete(
-    @CurrentUser('id') userId: number,
+    @CurrentUser('id') userId: string,
     @Body() uploadCompleteDto: UploadCompleteDto,
   ) {
-    return this.filesService.uploadComplete(userId, uploadCompleteDto);
+    return this.filesService.uploadComplete(userId as any, uploadCompleteDto);
   }
 
   @Get()
@@ -84,19 +85,19 @@ export class FilesController {
   @ApiQuery({ name: 'limit', required: false, description: '페이지 크기', example: 20 })
   @ApiResponse({ status: 200, description: '파일 목록 조회 성공' })
   async getUserFiles(
-    @CurrentUser('id') userId: number,
+    @CurrentUser('id') userId: string,
     @Query('fileType') fileType?: string,
     @Query('page', new ParseIntPipe({ optional: true })) page = 1,
     @Query('limit', new ParseIntPipe({ optional: true })) limit = 20,
   ) {
-    return this.filesService.getUserFiles(userId, fileType, page, limit);
+    return this.filesService.getUserFiles(userId as any, fileType, page, limit);
   }
 
   @Get('stats')
   @ApiOperation({ summary: '파일 통계 조회' })
   @ApiResponse({ status: 200, description: '파일 통계 조회 성공' })
-  async getFileStats(@CurrentUser('id') userId: number) {
-    return this.filesService.getFileStats(userId);
+  async getFileStats(@CurrentUser('id') userId: string) {
+    return this.filesService.getFileStats(userId as any);
   }
 
   @Get(':id')
@@ -104,10 +105,10 @@ export class FilesController {
   @ApiResponse({ status: 200, description: '파일 정보 조회 성공' })
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async getFile(
-    @Param('id', ParseIntPipe) fileId: number,
-    @CurrentUser('id') userId: number,
+    @Param('id') fileId: string,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.filesService.getFileById(fileId, userId);
+    return this.filesService.getFileById(fileId as any, userId as any);
   }
 
   @Get(':id/download-url')
@@ -124,10 +125,10 @@ export class FilesController {
   })
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async getDownloadUrl(
-    @Param('id', ParseIntPipe) fileId: number,
-    @CurrentUser('id') userId: number,
+    @Param('id') fileId: string,
+    @CurrentUser('id') userId: string,
   ) {
-    const downloadUrl = await this.filesService.getDownloadUrl(fileId, userId);
+    const downloadUrl = await this.filesService.getDownloadUrl(fileId as any, userId as any);
     return { downloadUrl };
   }
 
@@ -257,8 +258,8 @@ export class FilesController {
   @ApiResponse({ status: 204, description: '파일 삭제 성공' })
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async deleteFile(
-    @Param('id', ParseIntPipe) fileId: number,
-    @CurrentUser('id') userId: number,
+    @Param('id') fileId: string,
+    @CurrentUser('id') userId: string,
   ) {
     return this.filesService.deleteFile(fileId, userId);
   }

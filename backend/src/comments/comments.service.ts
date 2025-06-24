@@ -29,7 +29,7 @@ export class CommentsService {
     return await this.commentsRepository.save(comment) as unknown as Comment;
   }
 
-  async findAllByPost(postId: number): Promise<Comment[]> {
+  async findAllByPost(postId: string): Promise<Comment[]> {
     return this.commentsRepository.find({
       where: { post: { id: postId }, parentComment: null, isDeleted: false },
       relations: ['author', 'replies', 'replies.author'],
@@ -37,7 +37,7 @@ export class CommentsService {
     });
   }
 
-  async findOne(id: number): Promise<Comment> {
+  async findOne(id: string): Promise<Comment> {
     const comment = await this.commentsRepository.findOne({
       where: { id },
       relations: ['author', 'post'],
@@ -50,7 +50,7 @@ export class CommentsService {
     return comment;
   }
 
-  async update(id: number, updateCommentDto: any, user: User): Promise<Comment> {
+  async update(id: string, updateCommentDto: any, user: User): Promise<Comment> {
     const comment = await this.findOne(id);
 
     if (comment.author.id !== user.id) {
@@ -61,7 +61,7 @@ export class CommentsService {
     return this.commentsRepository.save(comment);
   }
 
-  async remove(id: number, user: User): Promise<void> {
+  async remove(id: string, user: User): Promise<void> {
     const comment = await this.findOne(id);
 
     if (comment.author.id !== user.id) {

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { postsAPI } from '@/lib/api';
+import { useCreatePost } from '@/hooks/usePosts';
 import { FiEdit3, FiType, FiAlignLeft, FiImage } from 'react-icons/fi';
 import BlogRichTextEditor from '@/components/posts/RichTextEditor';
 
@@ -11,12 +11,12 @@ export default function NewPostPage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [attachedFileIds, setAttachedFileIds] = useState<string[]>([]);
   
   const { user } = useAuth();
   const router = useRouter();
+  const createPostMutation = useCreatePost();
 
   useEffect(() => {
     if (!user) {
@@ -34,21 +34,20 @@ export default function NewPostPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     try {
-      await postsAPI.createPost({
+      await createPostMutation.mutateAsync({
         title,
         content,
         category: category || undefined,
-        // attachedFiles: attachedFileIds, // TODO: 백엔드에서 파일 연결 지원 시 추가
+        attachedFileIds: attachedFileIds.length > 0 ? attachedFileIds : undefined,
       });
+      
+      // 성공 시 메인 페이지로 이동
       router.push('/');
     } catch (error: any) {
       setError(error.message || '게시글 작성에 실패했습니다.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -161,10 +160,10 @@ export default function NewPostPage() {
               
               <button
                 type="submit"
-                disabled={loading || !title.trim() || !content.trim()}
+                disabled={createPostMutation.isPending || !title.trim() || !content.trim()}
                 className="px-8 py-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? (
+                {createPostMutation.isPending ? (
                   <span className="flex items-center">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                     작성 중...

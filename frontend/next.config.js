@@ -1,9 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 백엔드 API 서버로 프록시 설정
+  async rewrites() {
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: 'http://localhost:3000/api/v1/:path*',
+      },
+    ];
+  },
+
   images: {
     domains: [
-      'myblogdata84.s3.us-east-1.amazonaws.com',
-      's3.us-east-1.amazonaws.com',
+      'd1y66zmnw3oigo.cloudfront.net', // CloudFront CDN
+      'myblogdata84.s3.amazonaws.com', // S3 글로벌 도메인
+      'myblogdata84.s3.us-east-1.amazonaws.com', // S3 리전 도메인 (추가)
       'localhost'
     ],
     remotePatterns: [
@@ -20,10 +31,12 @@ const nextConfig = {
         pathname: '/myblogdata84/**',
       },
     ],
+    formats: ['image/webp', 'image/avif'],
   },
   experimental: {
     serverComponentsExternalPackages: ['sharp'],
   },
+  // assetPrefix: process.env.NODE_ENV === 'production' ? 'https://d1y66zmnw3oigo.cloudfront.net' : undefined,
 };
 
 module.exports = nextConfig;

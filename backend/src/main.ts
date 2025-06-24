@@ -70,7 +70,7 @@ async function bootstrap() {
       'ETag',
       'Cache-Control',
     ],
-    credentials: false, // 이미지 프록시에서는 credentials 불필요
+    credentials: true, // 쿠키 전송을 위해 활성화
     maxAge: 86400, // 24 hours
     preflightContinue: false,
     optionsSuccessStatus: 204,

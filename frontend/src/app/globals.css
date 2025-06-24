@@ -168,7 +168,7 @@ time, mark, audio, video {
 
 .blog-content a {
   color: #d97706 !important;
-  text-decoration: underline;
+  text-decoration: none !important;
   font-size: 14px !important;
   word-break: break-all;
 }
@@ -366,6 +366,47 @@ img {
   overflow-x: auto;
 }
 
+/* 이미지 리사이저 스타일 */
+.ProseMirror .image-resizer {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 8px 0;
+}
+
+.ProseMirror .image-resizer:hover .resize-handle {
+  opacity: 1 !important;
+}
+
+.ProseMirror .resize-handle {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  background: #3b82f6;
+  cursor: se-resize;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  border: 1px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.ProseMirror .resize-handle:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+}
+
+.ProseMirror .editor-image {
+  border-radius: 4px;
+  transition: box-shadow 0.2s ease;
+}
+
+.ProseMirror .image-resizer:hover .editor-image {
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
 @media (max-width: 640px) {
   .ProseMirror {
     padding: 0.75rem;
@@ -540,5 +581,304 @@ input, textarea, button, select {
   .post-content .text-sm {
     font-size: 14px !important;
   }
+}
+
+/* 코드 블록 하이라이팅 스타일 - Context7 권장사항 */
+.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1rem;
+  background: #1e1e1e !important;
+  color: #dcdcdc !important;
+  border-radius: 0.5rem;
+  font-family: 'GeistMono', 'Fira Code', 'Monaco', 'Menlo', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  margin: 1.5rem 0;
+}
+
+@media (max-width: 640px) {
+  .hljs {
+    padding: 0.75rem;
+    font-size: 12px !important;
+    margin: 1rem 0;
+  }
+}
+
+/* 하이라이트 색상 정의 */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+  color: #569cd6 !important;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-addition {
+  color: #ce9178 !important;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+  color: #6a9955 !important;
+}
+
+.hljs-number,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-variable,
+.hljs-subst,
+.hljs-link {
+  color: #b5cea8 !important;
+}
+
+.hljs-function,
+.hljs-class .hljs-title {
+  color: #dcdcaa !important;
+}
+
+.hljs-attr,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: #92c5f8 !important;
+}
+
+/* 에디터 내 코드 블록 스타일 */
+.ProseMirror .hljs {
+  background: #1e1e1e !important;
+  color: #dcdcdc !important;
+  border: none;
+}
+
+/* 텍스트 정렬 스타일 - 에디터용 */
+.ProseMirror [data-text-align="left"] {
+  text-align: left !important;
+}
+
+.ProseMirror [data-text-align="center"] {
+  text-align: center !important;
+}
+
+.ProseMirror [data-text-align="right"] {
+  text-align: right !important;
+}
+
+.ProseMirror [data-text-align="justify"] {
+  text-align: justify !important;
+}
+
+/* 블로그 콘텐츠에서도 텍스트 정렬 적용 - 더 강력한 선택자 */
+.blog-content [data-text-align="left"],
+.blog-content [data-text-align="left"] *,
+.blog-content p[data-text-align="left"],
+.blog-content div[data-text-align="left"] {
+  text-align: left !important;
+}
+
+.blog-content [data-text-align="center"],
+.blog-content [data-text-align="center"] *,
+.blog-content p[data-text-align="center"],
+.blog-content div[data-text-align="center"] {
+  text-align: center !important;
+}
+
+.blog-content [data-text-align="right"],
+.blog-content [data-text-align="right"] *,
+.blog-content p[data-text-align="right"],
+.blog-content div[data-text-align="right"] {
+  text-align: right !important;
+}
+
+.blog-content [data-text-align="justify"],
+.blog-content [data-text-align="justify"] *,
+.blog-content p[data-text-align="justify"],
+.blog-content div[data-text-align="justify"] {
+  text-align: justify !important;
+}
+
+/* 이미지 정렬도 지원 */
+.blog-content [data-text-align="center"] img,
+.blog-content p[data-text-align="center"] img {
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.blog-content [data-text-align="right"] img,
+.blog-content p[data-text-align="right"] img {
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+
+.blog-content [data-text-align="left"] img,
+.blog-content p[data-text-align="left"] img {
+  display: block !important;
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+
+/* 추가: 직접적인 텍스트 정렬 클래스도 지원 */
+.blog-content .text-left {
+  text-align: left !important;
+}
+
+.blog-content .text-center {
+  text-align: center !important;
+}
+
+.blog-content .text-right {
+  text-align: right !important;
+}
+
+.blog-content .text-justify {
+  text-align: justify !important;
+}
+
+/* ContentRenderer 전용 스타일 - 슬러그 페이지용 */
+.prose .editor-image {
+  display: block !important;
+  margin: 1rem auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: 0.5rem !important;
+}
+
+/* ContentRenderer 코드 블록 스타일 강화 */
+.prose pre.hljs {
+  background: #1e1e1e !important;
+  color: #d4d4d4 !important;
+  padding: 1rem !important;
+  border-radius: 0.5rem !important;
+  overflow-x: auto !important;
+  margin: 1rem 0 !important;
+  font-size: 13px !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+  line-height: 1.4 !important;
+}
+
+.prose pre.hljs code {
+  background: transparent !important;
+  color: inherit !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  font-family: inherit !important;
+}
+
+/* ContentRenderer 텍스트 정렬 강화 */
+.prose [data-text-align="left"] {
+  text-align: left !important;
+}
+
+.prose [data-text-align="center"] {
+  text-align: center !important;
+}
+
+.prose [data-text-align="right"] {
+  text-align: right !important;
+}
+
+.prose [data-text-align="justify"] {
+  text-align: justify !important;
+}
+
+/* ContentRenderer 이미지 정렬 */
+.prose [data-text-align="center"] .editor-image,
+.prose [data-text-align="center"] img {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  display: block !important;
+}
+
+.prose [data-text-align="left"] .editor-image,
+.prose [data-text-align="left"] img {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+  display: block !important;
+}
+
+.prose [data-text-align="right"] .editor-image,
+.prose [data-text-align="right"] img {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  display: block !important;
+}
+
+/* ContentRenderer 신택스 하이라이팅 색상 - VS Code 테마 */
+.prose .hljs-keyword,
+.prose .hljs-selector-tag,
+.prose .hljs-literal,
+.prose .hljs-section,
+.prose .hljs-link {
+  color: #569cd6 !important; /* 파란색 - 키워드 */
+}
+
+.prose .hljs-string,
+.prose .hljs-attr,
+.prose .hljs-symbol,
+.prose .hljs-bullet,
+.prose .hljs-addition {
+  color: #ce9178 !important; /* 주황색 - 문자열 */
+}
+
+.prose .hljs-title,
+.prose .hljs-section,
+.prose .hljs-attribute {
+  color: #dcdcaa !important; /* 노란색 - 함수명 */
+}
+
+.prose .hljs-variable,
+.prose .hljs-template-variable {
+  color: #9cdcfe !important; /* 하늘색 - 변수 */
+}
+
+.prose .hljs-comment,
+.prose .hljs-quote,
+.prose .hljs-deletion {
+  color: #6a9955 !important; /* 초록색 - 주석 */
+  font-style: italic !important;
+}
+
+.prose .hljs-number,
+.prose .hljs-regexp,
+.prose .hljs-literal {
+  color: #b5cea8 !important; /* 연두색 - 숫자 */
+}
+
+.prose .hljs-type,
+.prose .hljs-class,
+.prose .hljs-params {
+  color: #4ec9b0 !important; /* 청록색 - 타입 */
+}
+
+.prose .hljs-meta,
+.prose .hljs-meta-keyword {
+  color: #c586c0 !important; /* 보라색 - 메타 */
+}
+
+.prose .hljs-tag {
+  color: #569cd6 !important; /* 파란색 - HTML 태그 */
+}
+
+.prose .hljs-name {
+  color: #92c5f8 !important; /* 연한 파란색 - 태그명 */
+}
+
+.prose .hljs-operator {
+  color: #d4d4d4 !important; /* 기본 색상 - 연산자 */
+}
+
+.prose .hljs-punctuation {
+  color: #cccccc !important; /* 회색 - 구두점 */
 }
 

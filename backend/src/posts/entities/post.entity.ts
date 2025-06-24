@@ -1,12 +1,15 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, ManyToMany, JoinTable, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, ManyToMany, JoinTable, BeforeInsert, BeforeUpdate, JoinColumn, Index } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Comment } from '../../comments/entities/comment.entity';
 import { File } from '../../files/entities/file.entity';
 
 @Entity('posts')
+@Index(['isPublished'])
+@Index(['authorId'])
+@Index(['category'])
 export class Post {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column()
   title: string;
@@ -35,6 +38,9 @@ export class Post {
   @Column({ nullable: true })
   category: string;
 
+  @Column({ type: 'uuid' })
+  authorId: string;
+
   @CreateDateColumn()
   createdAt: Date;
 
@@ -44,8 +50,8 @@ export class Post {
   @Column({ nullable: true })
   publishedAt: Date;
 
-  // 관계 설정
   @ManyToOne(() => User, user => user.posts)
+  @JoinColumn({ name: 'authorId' })
   author: User;
 
   @OneToMany(() => Comment, comment => comment.post)
@@ -59,7 +65,6 @@ export class Post {
   })
   likedBy: User[];
 
-  // 첨부 파일 관계
   @ManyToMany(() => File, file => file.posts)
   @JoinTable({
     name: 'post_files',

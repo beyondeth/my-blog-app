@@ -9,13 +9,16 @@ import PostHeader from '@/components/posts/PostHeader';
 import AuthorInfo from '@/components/posts/AuthorInfo';
 import { useAuth } from '@/hooks/useAuth';
 import { usePost, useDeletePost, useTogglePostLike } from '@/hooks/usePosts';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function PostDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const [liked, setLiked] = useState(false);
+  const queryClient = useQueryClient();
+  const hasViewed = useRef(false);
 
   const slug = params.slug as string;
 
@@ -42,10 +45,23 @@ export default function PostDetailPage() {
 
   const handleLike = useCallback(() => {
     if (!post) return;
-    likeMutation.mutate(post.id, {
-      onSuccess: (response) => setLiked(response.liked),
+    // 1. Optimistic update: likeCount/liked 즉시 반영
+    queryClient.setQueryData(['posts', 'detail', slug], (old: any) => {
+      if (!old) return old;
+      return {
+        ...old,
+        likeCount: old.liked ? old.likeCount - 1 : old.likeCount + 1,
+        liked: !old.liked,
+      };
     });
-  }, [post, likeMutation]);
+    // 2. 서버에 요청
+    likeMutation.mutate(post.id, {
+      onError: () => {
+        // 실패 시 롤백
+        queryClient.setQueryData(['posts', 'detail', slug], post);
+      },
+    });
+  }, [post, likeMutation, queryClient, slug]);
 
   const handleShare = useCallback(async () => {
     if (navigator.share && post) {
@@ -67,6 +83,20 @@ export default function PostDetailPage() {
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
+
+  useEffect(() => {
+    if (!post || hasViewed.current) return;
+    // 5초 이상 머물렀을 때만 viewCount 증가
+    const timer = setTimeout(() => {
+      queryClient.setQueryData(['posts', 'detail', slug], {
+        ...post,
+        viewCount: post.viewCount + 1,
+      });
+      hasViewed.current = true;
+      // (별도 API 호출 필요시 이곳에서 처리)
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [post, queryClient, slug]);
 
   // 로딩 상태 - 최소 높이 보장으로 헤더 안정화
   if (isLoading) {
@@ -114,12 +144,12 @@ export default function PostDetailPage() {
       {/* Article Content */}
       <article className="max-w-3xl mx-auto px-6 py-16">
         <PostHeader 
-          post={post}
+          post={{ ...post, liked: post.liked, likeCount: post.likeCount }}
           canEdit={canEdit}
           onBack={handleBack}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          liked={liked}
+          liked={post.liked}
           likeCount={post.likeCount}
           onLike={handleLike}
           onShare={handleShare}

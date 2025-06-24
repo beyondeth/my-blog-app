@@ -55,33 +55,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       setIsLoading(true);
-      const token = localStorage.getItem('access_token');
-      const storedUser = localStorage.getItem('user');
       
-      if (token && storedUser) {
-        // 먼저 저장된 사용자 정보를 복원
-        try {
-          const userData = JSON.parse(storedUser);
-          setUser(userData);
-        } catch (parseError) {
-          console.error('Failed to parse stored user data:', parseError);
-        }
+      // 쿠키 기반 인증이므로 localStorage 토큰 확인 제거
+      // 대신 직접 API를 호출하여 인증 상태 확인
+      try {
+        const userData = await apiClient.getProfile();
+        setUser(userData);
         
-        // 그 다음 서버에서 최신 사용자 정보를 가져옴
-        try {
-          const userData = await apiClient.getProfile();
-          setUser(userData);
+        // 사용자 정보만 localStorage에 저장 (UI 성능을 위해)
+        if (mounted) {
           localStorage.setItem('user', JSON.stringify(userData));
-        } catch (apiError) {
-          // API 호출 실패해도 저장된 사용자 정보는 유지
-          console.error('Failed to refresh user data:', apiError);
+        }
+      } catch (apiError: any) {
+        // 401 에러면 인증되지 않은 상태 (정상적인 상황)
+        if (apiError.statusCode === 401) {
+          setUser(null);
+          if (mounted) {
+            localStorage.removeItem('user');
+            // localStorage에 저장된 기존 토큰들도 제거
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('token');
+          }
+          // 401 에러는 로그하지 않음 (정상적인 로그아웃 상태)
+        } else {
+          // 다른 에러면 저장된 사용자 정보로 복원 시도
+          console.error('Auth check failed with non-401 error:', apiError);
+          const storedUser = localStorage.getItem('user');
+          if (storedUser) {
+            try {
+              const userData = JSON.parse(storedUser);
+              setUser(userData);
+            } catch (parseError) {
+              console.error('Failed to parse stored user data:', parseError);
+              setUser(null);
+            }
+          }
         }
       }
     } catch (error) {
       console.error('Auth check failed:', error);
-      // 토큰이 유효하지 않으면 제거
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -90,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkAuth();
-  }, [mounted]); // checkAuth 의존성 제거하여 무한 루프 방지
+  }, [mounted]);
 
   const login = useCallback(async (credentials: LoginForm) => {
     try {
@@ -100,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await apiClient.login(credentials);
       setUser(response.user);
       
-      // 로컬 스토리지에 사용자 정보 저장 (토큰은 API 클라이언트에서 처리)
+      // 사용자 정보만 localStorage에 저장 (쿠키는 백엔드에서 자동 설정)
       if (mounted) {
         localStorage.setItem('user', JSON.stringify(response.user));
       }
@@ -119,7 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await apiClient.register(userData);
       setUser(response.user);
       
-      // 로컬 스토리지에 사용자 정보 저장
+      // 사용자 정보만 localStorage에 저장
       if (mounted) {
         localStorage.setItem('user', JSON.stringify(response.user));
       }
@@ -139,6 +151,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       if (mounted) {
         localStorage.removeItem('user');
+        localStorage.removeItem('access_token'); // 기존 토큰 제거
+        localStorage.removeItem('token'); // 기존 토큰 제거
         if (redirectTo) {
           window.location.href = redirectTo;
         }

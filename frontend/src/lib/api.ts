@@ -27,83 +27,92 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
+      timeout: 10000,
+      withCredentials: true, // 쿠키 전송을 위해 필요
       headers: {
         'Content-Type': 'application/json',
       },
-      timeout: 10000, // 10초 타임아웃
     });
 
     this.setupInterceptors();
   }
 
   private setupInterceptors() {
-    // 요청 인터셉터
+    // 요청 인터셉터 (Authorization 헤더 제거 - 쿠키 사용)
     this.client.interceptors.request.use(
       (config) => {
-        if (typeof window !== 'undefined') {
-          const token = this.getStoredToken();
-          if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-            console.log('🔑 Token added to request:', {
-              url: config.url,
-              method: config.method,
-              hasToken: !!token
-            });
-          } else {
-            console.warn('⚠️ No token found for request:', {
-              url: config.url,
-              method: config.method
-            });
-          }
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`);
         }
         return config;
       },
-      (error) => Promise.reject(this.handleError(error))
+      (error) => {
+        console.error('Request interceptor error:', error);
+        return Promise.reject(error);
+      }
     );
 
     // 응답 인터셉터
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ API Response: ${response.status} ${response.config.url}`);
+        }
+        return response;
+      },
       async (error) => {
         const originalRequest = error.config;
 
-        // 401 에러이고 재시도하지 않은 경우
-        if (error.response?.status === 401 && !originalRequest._retry) {
-          originalRequest._retry = true;
+        // 토큰 갱신을 시도하지 않아야 하는 경우들
+        const skipRefreshUrls = [
+          '/auth/login',
+          '/auth/register',
+          '/auth/refresh',
+          '/auth/logout',
+        ];
 
-          try {
-            // 토큰 갱신 시도
-            const newToken = await this.refreshToken();
-            if (newToken) {
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              return this.client(originalRequest);
-            }
-          } catch (refreshError) {
-            // 토큰 갱신 실패시 로그아웃 처리
-            this.handleLogout();
-          }
+        const shouldSkipRefresh = 
+          skipRefreshUrls.some(url => originalRequest.url?.includes(url)) ||
+          originalRequest._retry ||
+          error.response?.status !== 401;
+
+        if (shouldSkipRefresh) {
+          return Promise.reject(error);
         }
 
-        return Promise.reject(this.handleError(error));
+        // 401 에러이고 재시도하지 않은 경우에만 토큰 갱신 시도
+        originalRequest._retry = true;
+
+        try {
+          // 토큰 갱신 시도
+          await this.refreshToken();
+          // 원래 요청 재시도
+          return this.client(originalRequest);
+        } catch (refreshError) {
+          // 토큰 갱신 실패 시 로그아웃 처리
+          this.handleLogout();
+          return Promise.reject(error);
+        }
       }
     );
   }
 
+  // 토큰 관련 메서드들 제거 (쿠키 사용으로 불필요)
   private getStoredToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('access_token');
+    // 쿠키 기반 인증으로 변경되어 더 이상 사용하지 않음
+    return null;
   }
 
   private setStoredToken(token: string): void {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', token);
-    }
+    // 쿠키 기반 인증으로 변경되어 더 이상 사용하지 않음
+    // 백엔드에서 HttpOnly 쿠키로 자동 설정됨
   }
 
   private removeStoredToken(): void {
+    // localStorage에 저장된 기존 토큰 제거 (마이그레이션을 위해)
     if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
       localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
     }
   }
 
@@ -112,19 +121,20 @@ class ApiClient {
       return this.refreshTokenPromise;
     }
 
-    this.refreshTokenPromise = new Promise<string | null>(async (resolve, reject) => {
-      try {
-        // 리프레시 토큰 로직 (현재는 단순히 null 반환)
-        // 실제 구현에서는 refresh token을 사용해 새 토큰을 받아옴
-        resolve(null);
-      } catch (error) {
-        reject(error);
-      } finally {
-        this.refreshTokenPromise = null;
-      }
-    });
+    this.refreshTokenPromise = this.performTokenRefresh();
+    const result = await this.refreshTokenPromise;
+    this.refreshTokenPromise = null;
+    return result;
+  }
 
-    return this.refreshTokenPromise;
+  private async performTokenRefresh(): Promise<string | null> {
+    try {
+      await this.client.post('/auth/refresh');
+      return 'refreshed'; // 쿠키가 자동으로 업데이트됨
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      return null;
+    }
   }
 
   private handleLogout(): void {
@@ -171,7 +181,7 @@ class ApiClient {
       data: credentials,
     });
     
-    this.setStoredToken(response.access_token);
+    // 쿠키 기반이므로 토큰 저장 불필요
     return response;
   }
 
@@ -182,7 +192,7 @@ class ApiClient {
       data: userData,
     });
     
-    this.setStoredToken(response.access_token);
+    // 쿠키 기반이므로 토큰 저장 불필요
     return response;
   }
 
@@ -375,7 +385,7 @@ class ApiClient {
         hasToken: !!this.getStoredToken()
       });
 
-      // 1. Presigned URL 요청
+      // 1. Presigned URL 요청 - 반드시 인자로 받은 file 객체의 정보 사용
       const uploadData: CreateUploadUrlDto = {
         fileName: file.name,
         mimeType: file.type,
@@ -387,10 +397,10 @@ class ApiClient {
       const presignedResponse = await this.createUploadUrl(uploadData);
       console.log('📥 Presigned URL response:', presignedResponse);
 
-      // 2. S3에 파일 업로드
+      // 2. S3에 파일 업로드 (file 객체 그대로)
       await this.uploadFileToS3(file, presignedResponse.uploadUrl);
 
-      // 3. 업로드 완료 알림 - fileUrl 생성
+      // 3. 업로드 완료 알림 - file 객체 정보 그대로 사용
       const completeData: UploadCompleteDto = {
         fileKey: presignedResponse.fileKey,
         fileUrl: `https://myblogdata84.s3.us-east-1.amazonaws.com/${presignedResponse.fileKey}`,
@@ -400,6 +410,7 @@ class ApiClient {
         fileType: fileType
       };
 
+      console.log('실제 업로드할 파일 정보:', file.name, file.type, file.size);
       return await this.uploadComplete(completeData);
     } catch (error) {
       console.error('File upload failed:', error);

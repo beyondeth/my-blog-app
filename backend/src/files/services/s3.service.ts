@@ -53,6 +53,10 @@ export class S3Service {
     try {
       // MIME 타입 검증
       this.validateMimeType(mimeType, fileType);
+      // WebP만 허용 (이미지 업로드의 경우)
+      if (fileType === 'image' && mimeType !== 'image/webp') {
+        throw new BadRequestException('이미지 업로드는 WebP 형식만 허용됩니다.');
+      }
 
       // PutObject 명령 생성
       const putObjectCommand = new PutObjectCommand({

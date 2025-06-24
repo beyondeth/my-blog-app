@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthResponse } from './interfaces/auth-response.interface';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -131,38 +132,82 @@ export class AuthService {
     }
   }
 
-  async refreshToken(user: User): Promise<AuthResponse> {
-    return this.generateTokenResponse(user);
+  async refreshTokens(refreshToken: string): Promise<AuthResponse> {
+    try {
+      // Refresh Token 검증
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+
+      if (payload.tokenType !== 'refresh') {
+        throw new UnauthorizedException('Invalid token type');
+      }
+
+      const user = await this.usersService.findById(payload.sub);
+      if (!user || !user.isActive) {
+        throw new UnauthorizedException('User not found or inactive');
+      }
+
+      // 저장된 refresh token과 비교
+      if (user.refreshToken !== refreshToken || 
+          !user.refreshTokenExpiresAt || 
+          user.refreshTokenExpiresAt < new Date()) {
+        throw new UnauthorizedException('Invalid or expired refresh token');
+      }
+
+      return this.generateTokenResponse(user);
+    } catch (error) {
+      this.logger.error('Refresh token validation failed:', error.message);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
   }
 
-  async logout(userId: number): Promise<void> {
-    // JWT는 stateless이므로 클라이언트에서 토큰 삭제
-    // 필요시 블랙리스트 구현 가능
+  async logout(userId: string): Promise<void> {
+    // Refresh Token 무효화
+    await this.usersService.clearRefreshToken(userId);
     this.logger.log(`User ${userId} logged out`);
   }
 
-  private generateTokenResponse(user: User): AuthResponse {
-    const payload: JwtPayload = {
+  private async generateTokenResponse(user: User): Promise<AuthResponse> {
+    const now = Math.floor(Date.now() / 1000);
+
+    // Access Token 생성 (짧은 수명)
+    const accessPayload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
-      iat: Math.floor(Date.now() / 1000),
+      tokenType: 'access',
+      iat: now,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(accessPayload, {
+      expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN', '15m'),
+    });
+
+    // Refresh Token 생성 (긴 수명)
+    const refreshPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tokenType: 'refresh',
+      iat: now,
+    };
+
+    const refreshToken = this.jwtService.sign(refreshPayload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
+    });
+
+    // Refresh Token을 DB에 저장
+    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7일
+    await this.usersService.updateRefreshToken(user.id, refreshToken, refreshExpiresAt);
 
     return {
       access_token: accessToken,
+      refresh_token: refreshToken,
       token_type: 'Bearer',
-      expires_in: this.getTokenExpiresIn(),
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        role: user.role,
-        profileImage: user.profileImage,
-        isEmailVerified: user.isEmailVerified,
-      },
+      expires_in: this.getTokenExpiresIn('JWT_ACCESS_EXPIRES_IN', '15m'),
+      user: user.toPublicJSON(), // 보안 강화: 공개 정보만 반환
     };
   }
 
@@ -172,18 +217,23 @@ export class AuthService {
                         profile.name?.givenName || 
                         'user';
     
-    return `${baseUsername}_${Date.now()}`;
+    // UUID 일부 사용으로 고유성 보장
+    const uniqueId = crypto.randomUUID().slice(0, 8);
+    return `${baseUsername}_${uniqueId}`;
   }
 
-  private getTokenExpiresIn(): number {
-    const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN', '1d');
-    // 간단한 파싱 (1d = 86400초)
+  private getTokenExpiresIn(configKey: string, defaultValue: string): number {
+    const expiresIn = this.configService.get<string>(configKey, defaultValue);
+    // 간단한 파싱 (1d = 86400초, 15m = 900초)
     if (expiresIn.includes('d')) {
       return parseInt(expiresIn) * 24 * 60 * 60;
     }
     if (expiresIn.includes('h')) {
       return parseInt(expiresIn) * 60 * 60;
     }
-    return parseInt(expiresIn) || 86400;
+    if (expiresIn.includes('m')) {
+      return parseInt(expiresIn) * 60;
+    }
+    return parseInt(expiresIn) || 900;
   }
 } 

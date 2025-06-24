@@ -29,18 +29,25 @@ export class FilesService {
    * 파일 업로드용 Presigned URL 생성 (UUID 기반)
    */
   async createUploadUrl(
-    userId: number, 
+    userId: string, 
     createUploadUrlDto: CreateUploadUrlDto
   ): Promise<PresignedUrlResponse & { tempId: string; uuidFileName: string; s3Key: string }> {
     const { fileName, mimeType, fileSize, fileType } = createUploadUrlDto;
 
     try {
-      // 파일 타입 검증
-      const allowedTypes = this.configService.get<string>('SUPPORTED_IMAGE_TYPES', 
-        'image/jpeg,image/jpg,image/png,image/gif,image/webp').split(',');
-      
-      if (isImageMimeType(mimeType) && !validateMimeType(mimeType, allowedTypes)) {
-        throw new Error(`Unsupported image type: ${mimeType}`);
+      // 이미지 파일인 경우 WebP만 허용
+      if (fileType === 'image' && mimeType !== 'image/webp') {
+        throw new Error('이미지 업로드는 WebP 형식만 허용됩니다.');
+      }
+
+      // 문서 파일인 경우 기존 검증 로직 적용
+      if (fileType !== 'image') {
+        const allowedTypes = this.configService.get<string>('SUPPORTED_IMAGE_TYPES', 
+          'image/jpeg,image/jpg,image/png,image/gif,image/webp').split(',');
+        
+        if (isImageMimeType(mimeType) && !validateMimeType(mimeType, allowedTypes)) {
+          throw new Error(`Unsupported image type: ${mimeType}`);
+        }
       }
 
       // 파일 크기 검증
@@ -66,7 +73,7 @@ export class FilesService {
       // 임시 ID 생성 (업로드 완료 시 연결용)
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      this.logger.log(`Upload URL created for user ${userId}, original: ${fileName}, uuid: ${uuidFileName}`);
+      this.logger.log(`Upload URL created for user ${userId}, file: ${fileName}`);
 
       return {
         ...presignedData,
@@ -84,7 +91,7 @@ export class FilesService {
    * 파일 업로드 완료 처리 (UUID 기반)
    */
   async uploadComplete(
-    userId: number,
+    userId: string,
     uploadCompleteDto: UploadCompleteDto
   ): Promise<File & { accessUrl: string }> {
     const { fileKey, fileUrl, fileName, mimeType, fileSize, fileType } = uploadCompleteDto;
@@ -140,7 +147,7 @@ export class FilesService {
    * 사용자의 파일 목록 조회
    */
   async getUserFiles(
-    userId: number,
+    userId: string,
     fileType?: string,
     page: number = 1,
     limit: number = 20
@@ -186,7 +193,7 @@ export class FilesService {
   /**
    * 파일 정보 조회
    */
-  async getFileById(fileId: number, userId?: number): Promise<File> {
+  async getFileById(fileId: string, userId?: string): Promise<File> {
     const file = await this.fileRepository.findOne({
       where: { id: fileId },
       relations: ['user'],
@@ -216,7 +223,7 @@ export class FilesService {
   /**
    * 파일 삭제
    */
-  async deleteFile(fileId: number, userId: number): Promise<void> {
+  async deleteFile(fileId: string, userId: string): Promise<void> {
     const file = await this.getFileById(fileId, userId);
 
     try {
@@ -236,7 +243,7 @@ export class FilesService {
   /**
    * 파일 다운로드 URL 생성
    */
-  async getDownloadUrl(fileId: number, userId?: number): Promise<string> {
+  async getDownloadUrl(fileId: string, userId?: string): Promise<string> {
     const file = await this.getFileById(fileId, userId);
     
     try {
@@ -255,7 +262,7 @@ export class FilesService {
   /**
    * 파일 통계 조회
    */
-  async getFileStats(userId: number) {
+  async getFileStats(userId: string) {
     const stats = await this.fileRepository
       .createQueryBuilder('file')
       .select('file.fileType', 'fileType')
@@ -296,7 +303,7 @@ export class FilesService {
   }
 
   // 기존 메서드들 유지 (하위 호환성)
-  async findOne(id: number, userId: number): Promise<File> {
+  async findOne(id: string, userId: string): Promise<File> {
     return this.getFileById(id, userId);
   }
 

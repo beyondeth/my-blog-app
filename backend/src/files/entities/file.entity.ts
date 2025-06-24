@@ -12,8 +12,8 @@ import { User } from '../../users/entities/user.entity';
 
 @Entity('files')
 export class File {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ name: 'original_name' })
   originalName: string;
@@ -36,8 +36,8 @@ export class File {
   @Column({ name: 'file_type', default: 'general' })
   fileType: string; // 'image', 'document', 'video', 'general'
 
-  @Column({ name: 'user_id' })
-  userId: number;
+  @Column({ name: 'user_id', type: 'uuid' })
+  userId: string;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'user_id' })

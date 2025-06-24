@@ -21,7 +21,7 @@ export class CommentsController {
   @Public()
   @ApiOperation({ summary: '게시글별 댓글 조회' })
   findAllByPost(@Param('postId') postId: string) {
-    return this.commentsService.findAllByPost(+postId);
+    return this.commentsService.findAllByPost(postId);
   }
 
   @Get('all')
@@ -35,7 +35,7 @@ export class CommentsController {
   @Public()
   @ApiOperation({ summary: '댓글 상세 조회' })
   findOne(@Param('id') id: string) {
-    return this.commentsService.findOne(+id);
+    return this.commentsService.findOne(id);
   }
 
   @Put(':id')
@@ -43,7 +43,7 @@ export class CommentsController {
   @ApiOperation({ summary: '댓글 수정' })
   @ApiBearerAuth()
   update(@Param('id') id: string, @Body() updateCommentDto: any, @Request() req) {
-    return this.commentsService.update(+id, updateCommentDto, req.user);
+    return this.commentsService.update(id, updateCommentDto, req.user);
   }
 
   @Delete(':id')
@@ -51,6 +51,6 @@ export class CommentsController {
   @ApiOperation({ summary: '댓글 삭제' })
   @ApiBearerAuth()
   remove(@Param('id') id: string, @Request() req) {
-    return this.commentsService.remove(+id, req.user);
+    return this.commentsService.remove(id, req.user);
   }
 } 

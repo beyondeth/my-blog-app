@@ -39,7 +39,7 @@ export class UsersService {
     return { users, total };
   }
 
-  async findOne(id: number): Promise<User> {
+  async findOne(id: string): Promise<User> {
     const user = await this.usersRepository.findOne({ 
       where: { id },
       select: ['id', 'email', 'username', 'role', 'profileImage', 'isEmailVerified', 'createdAt', 'lastLoginAt', 'isActive']
@@ -73,7 +73,7 @@ export class UsersService {
     });
   }
 
-  async update(id: number, updateUserDto: UpdateUserDto): Promise<User> {
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(id);
     
     // 패스워드는 엔티티에서 자동으로 해시됨
@@ -85,13 +85,13 @@ export class UsersService {
     return updatedUser;
   }
 
-  async updateLastLogin(id: number): Promise<void> {
+  async updateLastLogin(id: string): Promise<void> {
     await this.usersRepository.update(id, { 
       lastLoginAt: new Date() 
     });
   }
 
-  async deactivate(id: number): Promise<void> {
+  async deactivate(id: string): Promise<void> {
     const user = await this.findOne(id);
     user.isActive = false;
     await this.usersRepository.save(user);
@@ -99,7 +99,7 @@ export class UsersService {
     this.logger.log(`User deactivated: ${user.email}`);
   }
 
-  async activate(id: number): Promise<void> {
+  async activate(id: string): Promise<void> {
     const user = await this.findOne(id);
     user.isActive = true;
     await this.usersRepository.save(user);
@@ -107,14 +107,14 @@ export class UsersService {
     this.logger.log(`User activated: ${user.email}`);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const user = await this.findOne(id);
     await this.usersRepository.remove(user);
     
     this.logger.log(`User removed: ${user.email}`);
   }
 
-  async isAdmin(userId: number): Promise<boolean> {
+  async isAdmin(userId: string): Promise<boolean> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
       select: ['role']
@@ -162,5 +162,29 @@ export class UsersService {
     });
 
     return { users, total };
+  }
+
+  // UUID 지원을 위한 새로운 findById 메서드
+  async findById(id: string): Promise<User | null> {
+    return this.usersRepository.findOne({ 
+      where: { id },
+      select: ['id', 'email', 'username', 'role', 'profileImage', 'isEmailVerified', 'createdAt', 'lastLoginAt', 'isActive', 'refreshToken', 'refreshTokenExpiresAt']
+    });
+  }
+
+  // Refresh Token 업데이트
+  async updateRefreshToken(id: string, refreshToken: string, expiresAt: Date): Promise<void> {
+    await this.usersRepository.update(id, { 
+      refreshToken,
+      refreshTokenExpiresAt: expiresAt
+    });
+  }
+
+  // Refresh Token 삭제 (로그아웃시)
+  async clearRefreshToken(id: string): Promise<void> {
+    await this.usersRepository.update(id, { 
+      refreshToken: null,
+      refreshTokenExpiresAt: null
+    });
   }
 } 

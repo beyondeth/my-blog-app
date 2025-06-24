@@ -108,6 +108,9 @@ export default function Header() {
             <Link href="/about" className="text-sm text-gray-900 hover:text-amber-800">
               소개
             </Link>
+            {/* <Link href="/analytics" className="text-sm text-gray-900 hover:text-amber-800">
+              📊 분석
+            </Link> */}
             
             {/* Desktop Auth Section */}
             <div className="flex items-center space-x-4">
@@ -197,6 +200,13 @@ export default function Header() {
                   className="block text-base text-gray-900 hover:text-amber-800 py-2 px-2 rounded-md hover:bg-gray-50 transition-colors"
                 >
                   소개
+                </Link>
+                <Link 
+                  href="/analytics" 
+                  onClick={closeMobileMenu}
+                  className="block text-base text-gray-900 hover:text-amber-800 py-2 px-2 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  📊 분석
                 </Link>
               </div>
 

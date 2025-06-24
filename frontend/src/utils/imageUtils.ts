@@ -5,6 +5,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import imageCompression from 'browser-image-compression';
 
 // 환경변수에서 설정값 가져오기
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
@@ -417,4 +418,83 @@ export function stripHtmlTags(html: string): string {
   
   // 연속된 공백을 하나로 변환하고 앞뒤 공백 제거
   return withoutEntities.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 이미지를 WebP 형식으로 변환
+ */
+export async function convertImageToWebP(file: File): Promise<File> {
+  try {
+    console.log('🔄 WebP 변환 시작:', file.name, file.type, formatFileSize(file.size));
+    
+    // WebP 변환 옵션 - 화질 우선 설정
+    const options = {
+      maxSizeMB: 10,
+      maxWidthOrHeight: 3840, // 4K 해상도까지 유지
+      useWebWorker: true,
+      fileType: 'image/webp' as const,
+      initialQuality: 0.85, // 화질 우선 (85%)
+      alwaysKeepResolution: true, // 해상도 유지
+    };
+
+    // browser-image-compression을 사용하여 WebP로 변환
+    const compressedFile = await imageCompression(file, options);
+    
+    // 파일명 변경 (.webp 확장자로)
+    const originalName = file.name;
+    const nameWithoutExt = originalName.substring(0, originalName.lastIndexOf('.')) || originalName;
+    const webpFileName = `${nameWithoutExt}.webp`;
+    
+    // 새로운 File 객체 생성
+    const webpFile = new File([compressedFile], webpFileName, {
+      type: 'image/webp',
+      lastModified: Date.now(),
+    });
+
+    // 압축률 계산
+    const originalSize = file.size;
+    const compressedSize = webpFile.size;
+    const compressionRatio = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+    const savedBytes = originalSize - compressedSize;
+    const savedMB = (savedBytes / (1024 * 1024)).toFixed(2);
+
+    // 항상 출력되는 상세 로그
+    console.log('📊 ===== WebP 변환 완료 - 파일 크기 최적화 결과 =====');
+    console.log('📁 원본 파일:', {
+      name: file.name,
+      type: file.type,
+      size: formatFileSize(file.size),
+      sizeBytes: originalSize
+    });
+    console.log('📁 변환된 파일:', {
+      name: webpFile.name,
+      type: webpFile.type,
+      size: formatFileSize(webpFile.size),
+      sizeBytes: compressedSize
+    });
+    console.log('📈 최적화 결과:', {
+      compressionRatio: `${compressionRatio}%`,
+      savedBytes: savedBytes,
+      savedSize: formatFileSize(savedBytes),
+      savedMB: `${savedMB}MB`,
+      efficiency: parseFloat(compressionRatio) > 0 ? '✅ 크기 감소' : '⚠️ 크기 증가',
+      quality: '🎨 고화질 모드 (85%)'
+    });
+
+    // 콘솔에 요약 정보 출력 (눈에 띄게)
+    if (parseFloat(compressionRatio) > 0) {
+      console.log(`🎉 WebP 변환으로 ${compressionRatio}% 절약! (${formatFileSize(savedBytes)} 감소)`);
+      console.log(`💾 원본: ${formatFileSize(originalSize)} → 변환: ${formatFileSize(compressedSize)}`);
+      console.log(`🎨 화질: 고품질 유지 (85% 품질)`);
+    } else {
+      console.log(`⚠️ WebP 변환 후 크기 증가: ${Math.abs(parseFloat(compressionRatio))}% (${formatFileSize(Math.abs(savedBytes))} 증가)`);
+      console.log(`💾 원본: ${formatFileSize(originalSize)} → 변환: ${formatFileSize(compressedSize)}`);
+    }
+    console.log('================================================');
+
+    return webpFile;
+  } catch (error) {
+    console.error('❌ [imageUtils] WebP conversion failed:', error);
+    throw new Error('WebP 변환에 실패했습니다. 다른 이미지를 시도해 주세요.');
+  }
 } 

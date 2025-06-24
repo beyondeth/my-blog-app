@@ -26,8 +26,8 @@ export enum AuthProvider {
 @Index(['username'])
 @Index(['role'])
 export class User {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ unique: true, length: 255 })
   email: string;
@@ -68,13 +68,22 @@ export class User {
   @Column({ nullable: true })
   lastLoginAt: Date;
 
+  // Refresh Token 관련 필드 추가
+  @Column({ nullable: true, length: 500 })
+  @Exclude({ toPlainOnly: true })
+  refreshToken: string;
+
+  @Column({ nullable: true })
+  @Exclude({ toPlainOnly: true })
+  refreshTokenExpiresAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
 
-  // 관계 설정
+  // 관계 설정 - UUID 참조로 변경 필요
   @OneToMany(() => Post, post => post.author, { lazy: true })
   posts: Promise<Post[]>;
 
@@ -95,8 +104,20 @@ export class User {
     return bcrypt.compare(password, this.password);
   }
 
+  // 공개할 사용자 정보만 반환 (보안 강화)
+  toPublicJSON() {
+    return {
+      id: this.id,
+      username: this.username,
+      profileImage: this.profileImage,
+      role: this.role,
+      isEmailVerified: this.isEmailVerified,
+      createdAt: this.createdAt,
+    };
+  }
+
   toJSON() {
-    const { password, ...result } = this;
+    const { password, refreshToken, refreshTokenExpiresAt, ...result } = this;
     return result;
   }
 } 

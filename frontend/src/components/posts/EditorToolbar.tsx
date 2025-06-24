@@ -8,7 +8,11 @@ import {
   FiList, 
   FiImage, 
   FiLink, 
-  FiCode 
+  FiCode,
+  FiAlignLeft,
+  FiAlignCenter,
+  FiAlignRight,
+  FiAlignJustify
 } from 'react-icons/fi';
 
 interface EditorToolbarProps {
@@ -94,6 +98,41 @@ export default function EditorToolbar({
         title="코드 블록"
       >
         <FiCode className="w-4 h-4" />
+      </ToolbarButton>
+
+      <div className="w-px h-6 bg-gray-300 mx-2" />
+
+      {/* 텍스트 정렬 버튼들 */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setTextAlign('left').run()}
+        isActive={editor.isActive({ textAlign: 'left' })}
+        title="왼쪽 정렬"
+      >
+        <FiAlignLeft className="w-4 h-4" />
+      </ToolbarButton>
+
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setTextAlign('center').run()}
+        isActive={editor.isActive({ textAlign: 'center' })}
+        title="가운데 정렬"
+      >
+        <FiAlignCenter className="w-4 h-4" />
+      </ToolbarButton>
+
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setTextAlign('right').run()}
+        isActive={editor.isActive({ textAlign: 'right' })}
+        title="오른쪽 정렬"
+      >
+        <FiAlignRight className="w-4 h-4" />
+      </ToolbarButton>
+
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+        isActive={editor.isActive({ textAlign: 'justify' })}
+        title="양쪽 정렬"
+      >
+        <FiAlignJustify className="w-4 h-4" />
       </ToolbarButton>
 
       <div className="w-px h-6 bg-gray-300 mx-2" />
